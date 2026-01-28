@@ -1,147 +1,249 @@
-# Raspberry Pi Setup Guide
+# Raspberry Pi 5 Setup Guide
 
-This guide covers setting up a Raspberry Pi 4 for the OAK-D capture system.
+This guide covers setting up a fresh Raspberry Pi 5 for the OAK-D capture system.
 
-## 1. USB Gadget Mode (Connect via USB-C)
+## What You Need
 
-This lets you SSH and transfer files over the USB-C cable (no WiFi/Ethernet needed).
+- Raspberry Pi 5
+- microSD card (will be wiped)
+- USB-C cable (laptop to Pi for power)
+- OAK-D Pro + USB-C data cable
+- Momentary push button
+- Active buzzer (3.3V)
+- 3x female-to-female jumper cables
+- A laptop on the same WiFi network
 
-### On the Pi (one-time setup)
+## 1. Flash the microSD Card
 
-Edit `/boot/firmware/config.txt` and add at the end:
+Download and open [Raspberry Pi Imager](https://www.raspberrypi.com/software/).
+
+1. **Device**: Raspberry Pi 5
+2. **OS**: Raspberry Pi OS Lite (64-bit, Bookworm) — no desktop needed for headless use
+3. **Storage**: Select your microSD card
+
+Before flashing, click **Edit Settings** (gear icon) to pre-configure:
+
+| Setting            | Value                          |
+|--------------------|--------------------------------|
+| Hostname           | `pi`                           |
+| Enable SSH         | Yes (use password or paste your public key) |
+| Username           | `pi`                           |
+| Password           | `pi`                           |
+| WiFi SSID          | (your network name)            |
+| WiFi Password      | (your network password)        |
+| WiFi Country       | (your country code, e.g. US)   |
+| Timezone           | (your timezone)                |
+
+Flash the card. This wipes everything on it.
+
+> **Note:** The Pi 5's USB-C port is power-only (no USB gadget/OTG mode like the
+> Pi 4). You cannot access the Pi over the USB cable — WiFi + SSH is required.
+
+## 2. Wiring
+
+### GPIO Pinout (Pi 5 40-pin header)
+
+Looking at the Pi with the USB ports facing you, pin 1 is top-left:
 
 ```
-dtoverlay=dwc2
+           3V3 Power  (1)  (2)  5V Power
+          GPIO 2/SDA  (3)  (4)  5V Power
+          GPIO 3/SCL  (5)  (6)  GND
+              GPIO 4  (7)  (8)  GPIO 14
+                 GND  (9)  (10) GPIO 15
+    BUTTON -> GPIO 17 (11) (12) GPIO 18 <- BUZZER
+             GPIO 27  (13) (14) GND <- BUZZER GND
+             GPIO 22  (15) (16) GPIO 23
+           3V3 Power  (17) (18) GPIO 24
+             GPIO 10  (19) (20) GND
+              GPIO 9  (21) (22) GPIO 25
+             GPIO 11  (23) (24) GPIO 8
+         BUTTON GND   (25) (26) GPIO 7
+              ...remaining pins...
 ```
 
-Edit `/boot/firmware/cmdline.txt` and add after `rootwait`:
+### Button (2 wires)
+
+The momentary push button connects to GPIO 17. The software uses an internal
+pull-up resistor, so no external resistor is needed.
+
+| Wire | From          | To (Pi pin)              |
+|------|---------------|--------------------------|
+| 1    | Button leg A  | **Pin 11** (GPIO 17)     |
+| 2    | Button leg B  | **Pin 25** (GND)         |
+
+> If your button has 4 legs, the two legs on the same side are connected
+> internally. Use one leg from each side.
+
+### Buzzer (2 wires)
+
+The active buzzer (the kind that beeps when you apply voltage, no frequency
+generation needed) connects to GPIO 18.
+
+| Wire | From       | To (Pi pin)              |
+|------|------------|--------------------------|
+| 1    | Buzzer (+) | **Pin 12** (GPIO 18)     |
+| 2    | Buzzer (-) | **Pin 14** (GND)         |
+
+> Active buzzers have a (+) marking or a longer leg. Polarity matters.
+
+### OAK-D Pro (1 cable)
+
+Plug the OAK-D Pro's USB-C cable into one of the Pi 5's **blue USB 3.0 ports**
+(not the black USB 2.0 ports). USB 3.0 is needed for camera bandwidth.
+
+### Power
+
+Plug a USB-C cable from your laptop into the Pi 5's **USB-C power port** (the
+port between the micro-HDMI ports and the audio jack).
+
+### Summary
 
 ```
-modules-load=dwc2,g_ether
+Pi 5 Pin 11 (GPIO 17) ---- Button ---- Pi 5 Pin 25 (GND)
+Pi 5 Pin 12 (GPIO 18) ---- Buzzer + -- Pi 5 Pin 14 (GND)
+Pi 5 USB 3.0 port -------- OAK-D Pro USB-C
+Pi 5 USB-C power port ---- Laptop USB-C (power)
 ```
 
-Reboot the Pi.
+## 3. First Boot
 
-### On your PC
+1. Insert the flashed microSD card
+2. Plug in the USB-C power cable from your laptop
+3. Wait ~60 seconds for the Pi to boot and connect to WiFi
 
-After connecting USB-C, the Pi appears as a network device with IP `192.168.5.18` (or similar).
+Then from your laptop:
 
 ```bash
-# SSH in
-ssh pi@192.168.5.18
-
-# Copy files to Pi
-scp file.txt pi@192.168.5.18:~/
-
-# Copy files from Pi
-scp pi@192.168.5.18:~/recordings/session_xxx ~/Downloads/
+ssh pi@pi.local
 ```
 
-## 2. Install uv (Python package manager)
+If `pi.local` doesn't resolve, check your router's admin page for the
+Pi's IP address and use that instead.
 
-On the Pi:
+### If you need to configure WiFi after first boot
+
+If you forgot to set WiFi in Pi Imager, connect a monitor + keyboard and run:
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-source ~/.bashrc
+sudo nmcli device wifi connect "YOUR_SSID" password "YOUR_PASSWORD"
 ```
 
 Verify:
 
 ```bash
+ip addr show wlan0
+```
+
+## 4. System Setup
+
+Run these commands on the Pi:
+
+```bash
+# update the system
+sudo apt update && sudo apt upgrade -y
+
+# install dependencies for depthai and usb camera access
+sudo apt install -y git python3-dev libusb-1.0-0-dev libopenblas-dev
+
+# add udev rules for OAK-D (allows non-root USB access)
+echo 'SUBSYSTEM=="usb", ATTRS{idVendor}=="03e7", MODE="0666"' | \
+  sudo tee /etc/udev/rules.d/80-movidius.rules
+sudo udevadm control --reload-rules && sudo udevadm trigger
+
+# install uv (python package manager)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source ~/.bashrc
+
+# verify
 uv --version
 ```
 
-## 3. Deploy the Project
-
-### Copy project files to Pi
-
-From your PC:
+## 5. Clone and Install the Project
 
 ```bash
-scp -r /path/to/oakd-pi pi@192.168.5.18:~/
-```
-
-### Install dependencies
-
-On the Pi:
-
-```bash
-cd ~/oakd-pi
+cd ~
+git clone https://github.com/asimov-robotics-inc/oakd-pi.git
+cd oakd-pi
 uv sync
 ```
 
-### Test manually
+## 6. Verify OAK-D is Detected
+
+With the OAK-D plugged into a blue USB 3.0 port:
+
+```bash
+uv run python -c "import depthai; print(depthai.Device.getAllAvailableDevices())"
+```
+
+You should see at least one device listed.
+
+## 7. Test the Capture
 
 ```bash
 uv run python -m oakd_capture
 ```
 
-You should hear 3 beeps when ready. Press button to start/stop recording.
+- 3 beeps = ready
+- Press button = start recording (1 beep)
+- Press button again = stop recording (2 beeps)
 
-## 4. Run on Boot (systemd)
-
-### Install service
+## 8. Run on Boot (systemd)
 
 ```bash
 sudo cp ~/oakd-pi/systemd/oakd-capture.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable oakd-capture
-```
-
-### Start now
-
-```bash
 sudo systemctl start oakd-capture
 ```
 
-### Check status
+Check status:
 
 ```bash
 sudo systemctl status oakd-capture
 ```
 
-### View logs
+View logs:
 
 ```bash
 journalctl -u oakd-capture -f
 ```
 
-### Stop/restart
+Stop or restart:
 
 ```bash
 sudo systemctl stop oakd-capture
 sudo systemctl restart oakd-capture
 ```
 
-## 5. Retrieve Recordings
+## 9. Retrieve Recordings
 
 Recordings are saved to `~/recordings/` on the Pi.
 
 ```bash
-# List sessions
-ssh pi@192.168.5.18 "ls -la ~/recordings/"
+# list sessions
+ssh pi@pi.local "ls -la ~/recordings/"
 
-# Copy a session to your PC
-scp -r pi@192.168.5.18:~/recordings/session_YYYYMMDD_HHMMSS ~/Downloads/
+# copy a session to your laptop
+scp -r pi@pi.local:~/recordings/session_YYYYMMDD_HHMMSS ~/Downloads/
 ```
 
 Each session contains:
-- `recording_XXX.mcap` - sensor data (viewable in Foxglove Studio)
-- `calibration.json` - camera intrinsics/extrinsics
-- `metadata.json` - session info
+- `recording_XXX.mcap` — sensor data (H.264 payloads; Foxglove compatibility not guaranteed)
+- `calibration.json` — camera intrinsics/extrinsics
+- `metadata.json` — session info
 
 ## Troubleshooting
 
-### USB connection not working
+### Can't SSH / Pi not on network
 
-- Ensure USB-C cable supports data (not charge-only)
-- Check `ip addr` on Pi for usb0 interface
-- Try `ping 192.168.5.18` from PC
+- Double-check WiFi credentials were set in Pi Imager
+- Try connecting a monitor + keyboard to configure WiFi manually (see step 3)
+- Make sure your laptop is on the same network
 
 ### GPIO errors
 
-If you see "Failed to add edge detection", ensure `lgpio` is installed:
+If you see "Failed to add edge detection":
 
 ```bash
 uv add lgpio
@@ -149,8 +251,11 @@ uv add lgpio
 
 ### Camera bandwidth errors (X_LINK_ERROR)
 
-The Pi 4 has limited USB bandwidth. The current config uses reduced resolutions:
-- RGB: 640x360
-- Mono: 640x400
+Use the blue USB 3.0 ports, not USB 2.0. If errors persist, try a powered USB
+hub or reduce FPS/resolution in the capture config.
 
-If errors persist, try a powered USB hub or reduce FPS.
+### Pi not booting
+
+- Make sure the microSD card is fully inserted
+- Try a different USB-C cable or power source (some laptop ports don't supply enough current)
+- The Pi 5 needs at least 5V/3A — a laptop USB port may only provide 5V/0.9A, which can cause instability. If the Pi keeps rebooting, use a proper 5V/5A USB-C power supply instead

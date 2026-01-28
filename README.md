@@ -1,6 +1,6 @@
 # OAK-D Egocentric Capture
 
-Headless data capture system for robotics training using Raspberry Pi 4 + OAK-D Pro.
+Headless data capture system for robotics training using Raspberry Pi 5 + OAK-D Pro.
 
 ## Features
 
@@ -9,12 +9,12 @@ Headless data capture system for robotics training using Raspberry Pi 4 + OAK-D 
 - IMU (100Hz accelerometer + gyroscope)
 - IR projector for improved depth
 - Button start/stop with buzzer feedback
-- MCAP format (Foxglove Studio compatible)
+- MCAP format (custom schema with H.264 payloads)
 - Runs on boot via systemd
 
 ## Hardware
 
-- Raspberry Pi 4
+- Raspberry Pi 5
 - OAK-D Pro (USB-C)
 - Momentary button (GPIO 17)
 - Active buzzer (GPIO 18)
@@ -49,7 +49,7 @@ Saved to `~/recordings/session_YYYYMMDD_HHMMSS/`:
 - `calibration.json` - camera intrinsics
 - `metadata.json` - session info
 
-View in [Foxglove Studio](https://foxglove.dev/studio).
+MCAP payloads contain H.264-encoded frames and IMU packets. Foxglove compatibility is not guaranteed.
 
 ## Run on Boot
 

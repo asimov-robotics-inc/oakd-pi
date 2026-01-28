@@ -24,14 +24,14 @@ Build a high-quality egocentric data capture device for training robots. The sys
 - Multiple recordings per session supported
 
 ### Data Capture
-- RGB camera: MJPEG @ 720p, 30fps
-- Stereo mono cameras: Raw @ 400p, 30fps
-- IMU: 400Hz accelerometer + gyroscope
+- RGB camera: H.264 @ 640x360, 30fps
+- Stereo mono cameras: H.264 @ 640x400, 30fps
+- IMU: 100Hz accelerometer + gyroscope
 - IR projector: Enabled at 50% intensity
-- All streams temporally synchronized via DepthAI Sync node
+- All streams temporally synchronized via DepthAI Sync node when available (fallback to separate queues)
 
 ### Output Format
-- MCAP files (industry standard, Foxglove/ROS compatible)
+- MCAP files (industry standard, custom schema with H.264 payloads)
 - Calibration data saved per session
 - Session metadata (device info, timestamps)
 
