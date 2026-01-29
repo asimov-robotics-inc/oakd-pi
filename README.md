@@ -4,10 +4,13 @@ Headless data capture system for robotics training using Raspberry Pi 5 + OAK-D 
 
 ## Features
 
-- RGB camera (640x360 @ 30fps)
-- Stereo mono cameras (640x400 @ 30fps)
-- IMU (100Hz accelerometer + gyroscope)
+- RGB camera (720p @ 30fps, H.265)
+- Depth (StereoDepth on-device, RGB-aligned)
+- IMU (200Hz accelerometer + gyroscope)
 - IR projector for improved depth
+- On-device H.265 encoding (10 Mbps, near-lossless)
+- **Software-synchronized** RGB + depth (Sync node, <10ms threshold)
+- Device timestamps for all streams
 - Button start/stop with buzzer feedback
 - MCAP format (custom schema with H.264 payloads)
 - Runs on boot via systemd
@@ -44,10 +47,10 @@ uv run python -m oakd_capture
 
 ## Recordings
 
-Saved to `~/recordings/session_YYYYMMDD_HHMMSS/`:
-- `recording_XXX.mcap` - sensor data
-- `calibration.json` - camera intrinsics
-- `metadata.json` - session info
+Saved to `~/recordings/YYYYMMDD_HHMMSS/` (timestamp is UTC):
+- `recording_YYYYMMDD_HHMMSS.mcap` - sensor data (RGB + depth + IMU)
+- `calibration_YYYYMMDD_HHMMSS.json` - camera intrinsics/extrinsics
+- `metadata_YYYYMMDD_HHMMSS.json` - recording config + device info
 
 MCAP payloads contain H.264-encoded frames and IMU packets. Foxglove compatibility is not guaranteed.
 

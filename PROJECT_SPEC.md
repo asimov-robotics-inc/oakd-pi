@@ -21,29 +21,28 @@ Build a high-quality egocentric data capture device for training robots. The sys
 ### Recording Control
 - Button press starts recording (1 beep)
 - Button press stops recording (2 beeps)
-- Multiple recordings per session supported
+- Each recording gets its own timestamped folder
 
 ### Data Capture
-- RGB camera: H.264 @ 640x360, 30fps
-- Stereo mono cameras: H.264 @ 640x400, 30fps
-- IMU: 100Hz accelerometer + gyroscope
+- RGB camera: H.265 @ 720p, 30fps
+- Depth: StereoDepth on-device, aligned to RGB
+- IMU: 200Hz accelerometer + gyroscope
 - IR projector: Enabled at 50% intensity
-- All streams temporally synchronized via DepthAI Sync node when available (fallback to separate queues)
+- RGB + depth synchronized via DepthAI Sync node
 
 ### Output Format
-- MCAP files (industry standard, custom schema with H.264 payloads)
-- Calibration data saved per session
-- Session metadata (device info, timestamps)
+- MCAP files (industry standard, Foxglove/ROS compatible)
+- Calibration data saved per recording
+- Recording metadata (device info, timestamps, config)
 
 ## Recording Structure
 
 ```
 ~/recordings/
-└── session_YYYYMMDD_HHMMSS/
-    ├── recording_001.mcap
-    ├── recording_002.mcap
-    ├── calibration.json
-    └── metadata.json
+└── YYYYMMDD_HHMMSS/
+    ├── recording_YYYYMMDD_HHMMSS.mcap
+    ├── calibration_YYYYMMDD_HHMMSS.json
+    └── metadata_YYYYMMDD_HHMMSS.json
 ```
 
 ## Technical Stack

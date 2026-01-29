@@ -2,39 +2,54 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.3.1] - 2026-01-29
 
 ### Added
-- DepthAI Sync node for RGB/left/right/IMU alignment (with fallback if unavailable)
+- On-device StereoDepth output (RGB-aligned) recorded to MCAP
+- Expanded recording metadata (fps, resolution, depth settings, IMU rate)
 - Disk-space guard before starting a recording
 - Short drain window on stop to flush queued packets
 
 ### Changed
-- On-device H.264 encoding for RGB/left/right to reduce host CPU
-- Blocking queue reads with timeout and periodic warnings
-- MCAP payload schema now stores H.264 bytes (custom schema)
+- Recordings now stored in per-recording timestamp folders (UTC)
+- Only RGB + depth + IMU are recorded (no left/right mono outputs)
+- Main loop uses blocking sync queue with timeouts and batches IMU reads
+- systemd service auto-restarts more aggressively for reliability
 
-## [0.1.1] - 2026-01-28
+### Removed
+- Foxglove schema definitions (CompressedVideo, Imu)
+- base64 dependency for frame encoding
+
+## [0.3.0] - 2026-01-29
+
+### Changed
+- McapRecorder uses raw binary format instead of Foxglove JSON schemas
+- Video frames written as raw H.265 bytes (no base64/JSON wrapping)
+- IMU data packed as 48-byte binary (6 little-endian doubles: ax,ay,az,gx,gy,gz)
+- Recording config stored as MCAP metadata (resolution, fps, encoding, imu_hz)
+
+## [0.2.0] - 2026-01-24
+
+### Added
+- Sync node for camera stream synchronization (<10ms threshold)
+- Device timestamps for all frames (not system time)
+- IMU at 200Hz (was 100Hz)
+
+### Changed
+- H.265 encoding on camera (industry standard, 10 Mbps)
+- All cameras at 720p @ 30fps (unified resolution)
+- Removed opencv dependency (encoding now on-device)
+- Only synchronized frame groups are saved (RGB + left + right aligned)
+
+## [0.1.1] - 2026-01-24
 
 ### Fixed
 - Thread-safe recording stop (button callback no longer causes race condition)
-- MCAP now uses Foxglove-compatible schemas (foxglove.CompressedImage, foxglove.Imu)
-- Images encoded as JPEG for Foxglove Studio compatibility
-- Use device timestamps instead of wall-clock time for accurate multi-stream alignment
-- Fix metadata session_start to record actual session creation time, not cleanup time
-- Fix bare `except:` to `except Exception:` to avoid catching SystemExit/KeyboardInterrupt
-- Correct PROJECT_SPEC.md to match actual resolution (640x360) and IMU rate (100Hz)
-- Fix __init__.py version to match pyproject.toml (0.1.1)
+- MCAP now uses Foxglove-compatible schemas (foxglove.CompressedVideo, foxglove.Imu)
 
 ### Added
-- docs/pi_setup.md - complete Pi setup guide (uv, systemd)
-- opencv-python-headless dependency for JPEG encoding
+- docs/pi_setup.md - complete Pi setup guide (USB gadget, uv, systemd)
 - lgpio dependency for GPIO on newer kernels
-
-### Changed
-- Reduced camera resolutions for USB bandwidth (640x360 RGB, 640x400 mono)
-- Use non-blocking beep_async for recording start/stop feedback
-- Remove unused device_id variable
 
 ## [0.1.0] - 2026-01-24
 

@@ -7,8 +7,10 @@ Type=simple
 User=pi
 WorkingDirectory=/home/pi/oakd-pi
 ExecStart=/home/pi/.local/bin/uv run python -m oakd_capture
-Restart=on-failure
-RestartSec=5
+Restart=always
+RestartSec=2
+StartLimitIntervalSec=30
+StartLimitBurst=10
 StandardOutput=journal
 StandardError=journal
 

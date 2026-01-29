@@ -115,7 +115,17 @@ Pi 5 USB-C power port ---- Laptop USB-C (power)
 Then from your laptop:
 
 ```bash
+# SSH in (Bonjour)
 ssh pi@pi.local
+
+# Or use the IP directly
+ssh pi@192.168.5.18
+
+# Copy files to Pi
+scp file.txt pi@192.168.5.18:~/
+
+# Copy files from Pi
+scp -r pi@192.168.5.18:~/recordings/20260129_123456 ~/Downloads/
 ```
 
 If `pi.local` doesn't resolve, check your router's admin page for the
@@ -224,14 +234,14 @@ Recordings are saved to `~/recordings/` on the Pi.
 # list sessions
 ssh pi@pi.local "ls -la ~/recordings/"
 
-# copy a session to your laptop
-scp -r pi@pi.local:~/recordings/session_YYYYMMDD_HHMMSS ~/Downloads/
+# Copy a recording to your PC
+scp -r pi@192.168.5.18:~/recordings/YYYYMMDD_HHMMSS ~/Downloads/
 ```
 
-Each session contains:
-- `recording_XXX.mcap` — sensor data (H.264 payloads; Foxglove compatibility not guaranteed)
-- `calibration.json` — camera intrinsics/extrinsics
-- `metadata.json` — session info
+Each recording folder contains:
+- `recording_YYYYMMDD_HHMMSS.mcap` - sensor data (viewable in Foxglove Studio)
+- `calibration_YYYYMMDD_HHMMSS.json` - camera intrinsics/extrinsics
+- `metadata_YYYYMMDD_HHMMSS.json` - recording config + device info
 
 ## Troubleshooting
 
@@ -251,11 +261,8 @@ uv add lgpio
 
 ### Camera bandwidth errors (X_LINK_ERROR)
 
-Use the blue USB 3.0 ports, not USB 2.0. If errors persist, try a powered USB
-hub or reduce FPS/resolution in the capture config.
+Use the blue USB 3.0 ports, not USB 2.0. The current config uses:
+- RGB: 1280x720
+- Depth: aligned to RGB
 
-### Pi not booting
-
-- Make sure the microSD card is fully inserted
-- Try a different USB-C cable or power source (some laptop ports don't supply enough current)
-- The Pi 5 needs at least 5V/3A — a laptop USB port may only provide 5V/0.9A, which can cause instability. If the Pi keeps rebooting, use a proper 5V/5A USB-C power supply instead
+If errors persist, try a powered USB hub or reduce FPS/resolution.
