@@ -36,8 +36,9 @@ Before flashing, click **Edit Settings** (gear icon) to pre-configure:
 
 Flash the card. This wipes everything on it.
 
-> **Note:** The Pi 5's USB-C port is power-only (no USB gadget/OTG mode like the
-> Pi 4). You cannot access the Pi over the USB cable — WiFi + SSH is required.
+> **Note:** This guide assumes you’ll either SSH over your normal Wi‑Fi network
+> or plug in a monitor + keyboard/mouse for first‑time setup. USB gadget mode
+> is optional and not covered here.
 
 ## 2. Wiring
 
@@ -112,7 +113,7 @@ Pi 5 USB-C power port ---- Laptop USB-C (power)
 2. Plug in the USB-C power cable from your laptop
 3. Wait ~60 seconds for the Pi to boot and connect to WiFi
 
-Then from your laptop:
+Then from your laptop (same network):
 
 ```bash
 # SSH in (Bonjour)
@@ -130,6 +131,11 @@ scp -r pi@192.168.5.18:~/recordings/20260129_123456 ~/Downloads/
 
 If `pi.local` doesn't resolve, check your router's admin page for the
 Pi's IP address and use that instead.
+
+### Alternative: use a monitor + keyboard/mouse
+
+If you don’t want to use SSH, connect a monitor and keyboard/mouse and log in
+locally. You can run the same setup commands in a terminal on the Pi.
 
 ### If you need to configure WiFi after first boot
 

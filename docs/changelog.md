@@ -48,7 +48,7 @@ All notable changes to this project will be documented in this file.
 - MCAP now uses Foxglove-compatible schemas (foxglove.CompressedVideo, foxglove.Imu)
 
 ### Added
-- docs/pi_setup.md - complete Pi setup guide (USB gadget, uv, systemd)
+- docs/pi_setup.md - complete Pi setup guide (Wi‑Fi SSH, local setup, systemd)
 - lgpio dependency for GPIO on newer kernels
 
 ## [0.1.0] - 2026-01-24
