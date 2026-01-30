@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.2] - 2026-01-30
+
+### Added
+- `tools/viewer.py` - standalone MCAP recording viewer with RGB video, depth colormap, and scrolling IMU plot
+- Optional `viewer` dependency group in pyproject.toml (`opencv-python`, `av`, `numpy`)
+
 ## [0.4.1] - 2026-01-30
 
 ### Added

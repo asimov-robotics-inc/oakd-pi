@@ -11,5 +11,7 @@
 - **M6: no_ux branch** - Remove button/buzzer hardware, auto-record on startup
 - **M7: Setup scripts & doc cleanup** - Add setup.sh/run.sh/stop.sh, strip button/buzzer from all docs
 
+- **M8: MCAP Viewer** - Standalone playback tool with RGB, depth colormap, and IMU plots
+
 ### Upcoming
 (none)
