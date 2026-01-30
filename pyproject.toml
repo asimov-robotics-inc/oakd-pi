@@ -9,7 +9,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-viewer = ["opencv-python", "av", "numpy"]
+viewer = ["opencv-python", "av"]
 
 [build-system]
 requires = ["hatchling"]

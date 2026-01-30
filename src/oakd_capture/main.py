@@ -27,6 +27,10 @@ IMU_HZ = 200  # IMU sample rate
 IR_INTENSITY = 0.5
 QUEUE_TIMEOUT_S = 0.5
 MIN_FREE_GB = 2.0
+# StereoDepth on-device filtering only (no host-side processing)
+DEPTH_FILTER_ENABLED = True
+DEPTH_CONFIDENCE = 200
+DEPTH_MEDIAN = dai.MedianFilter.KERNEL_7x7
 
 # Video encoding settings (H.265 on camera)
 RESOLUTION = (1280, 720)  # 720p for all cameras
@@ -76,6 +80,9 @@ class McapRecorder:
                 "imu_hz": str(IMU_HZ),
                 "depth_encoding": "raw16_mm",
                 "sync_threshold_ms": str(SYNC_THRESHOLD_MS),
+                "depth_filtering_enabled": str(DEPTH_FILTER_ENABLED),
+                "depth_confidence": str(DEPTH_CONFIDENCE),
+                "depth_median_filter": str(DEPTH_MEDIAN),
             },
         )
         log.info(f"Opened MCAP: {self._filepath}")
@@ -187,6 +194,9 @@ class CaptureApp:
                         "rectification": True,
                         "left_right_check": True,
                         "depth_encoding": "raw16_mm",
+                        "filtering_enabled": DEPTH_FILTER_ENABLED,
+                        "confidence_threshold": DEPTH_CONFIDENCE,
+                        "median_filter": str(DEPTH_MEDIAN),
                     },
                 },
             }
@@ -304,6 +314,8 @@ class CaptureApp:
                 stereo.setRectification(True)
                 stereo.setLeftRightCheck(True)
                 stereo.setDepthAlign(dai.CameraBoardSocket.CAM_A)
+                stereo.initialConfig.setMedianFilter(DEPTH_MEDIAN)
+                stereo.initialConfig.setConfidenceThreshold(DEPTH_CONFIDENCE)
 
                 # H.265 video encoder (encode on camera, not Pi)
                 enc_rgb = pipeline.create(dai.node.VideoEncoder)
