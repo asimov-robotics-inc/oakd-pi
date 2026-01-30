@@ -12,7 +12,7 @@ Headless data capture system for robotics training using Raspberry Pi 5 + OAK-D 
 - **Software-synchronized** RGB + depth (Sync node, <10ms threshold)
 - Device timestamps for all streams
 - Button start/stop with buzzer feedback
-- MCAP format (custom schema with H.264 payloads)
+- MCAP format (raw binary H.265 + packed IMU)
 - Runs on boot via systemd
 
 ## Hardware
@@ -25,16 +25,15 @@ Headless data capture system for robotics training using Raspberry Pi 5 + OAK-D 
 
 ## Quick Start
 
+See [Pi Setup Guide](docs/pi_setup.md) for full first-time setup with wiring
+diagrams and system dependencies.
+
 ```bash
-# SSH into Pi
-ssh pi@192.168.5.18
+cd ~/oakd-pi
 
-# Install uv
+# Install uv (if not already installed)
 curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Clone/copy project
-git clone https://github.com/asimov-robotics-inc/oakd-pi.git
-cd oakd-pi
+source ~/.bashrc
 
 # Install dependencies
 uv sync
@@ -52,7 +51,7 @@ Saved to `~/recordings/YYYYMMDD_HHMMSS/` (timestamp is UTC):
 - `calibration_YYYYMMDD_HHMMSS.json` - camera intrinsics/extrinsics
 - `metadata_YYYYMMDD_HHMMSS.json` - recording config + device info
 
-MCAP payloads contain H.264-encoded frames and IMU packets. Foxglove compatibility is not guaranteed.
+MCAP payloads contain raw H.265 video frames and 48-byte packed IMU binary. Not Foxglove-compatible out of the box.
 
 ## Run on Boot
 

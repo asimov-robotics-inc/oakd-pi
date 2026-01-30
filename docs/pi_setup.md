@@ -1,46 +1,20 @@
 # Raspberry Pi 5 Setup Guide
 
-This guide covers setting up a fresh Raspberry Pi 5 for the OAK-D capture system.
+This guide walks through setting up the OAK-D capture system on a Raspberry Pi 5
+with a monitor, keyboard, and mouse connected directly. It assumes you've already
+flashed the OS and cloned the repo.
 
-## What You Need
+## Prerequisites
 
-- Raspberry Pi 5
-- microSD card (will be wiped)
-- USB-C cable (laptop to Pi for power)
+- Raspberry Pi 5 with Raspberry Pi OS booted and working
+- Monitor + keyboard + mouse connected to the Pi
+- This repo already cloned to `~/oakd-pi`
 - OAK-D Pro + USB-C data cable
 - Momentary push button
 - Active buzzer (3.3V)
-- 3x female-to-female jumper cables
-- A laptop on the same WiFi network
+- Jumper wires (female-to-female)
 
-## 1. Flash the microSD Card
-
-Download and open [Raspberry Pi Imager](https://www.raspberrypi.com/software/).
-
-1. **Device**: Raspberry Pi 5
-2. **OS**: Raspberry Pi OS Lite (64-bit, Bookworm) — no desktop needed for headless use
-3. **Storage**: Select your microSD card
-
-Before flashing, click **Edit Settings** (gear icon) to pre-configure:
-
-| Setting            | Value                          |
-|--------------------|--------------------------------|
-| Hostname           | `pi`                           |
-| Enable SSH         | Yes (use password or paste your public key) |
-| Username           | `pi`                           |
-| Password           | `pi`                           |
-| WiFi SSID          | (your network name)            |
-| WiFi Password      | (your network password)        |
-| WiFi Country       | (your country code, e.g. US)   |
-| Timezone           | (your timezone)                |
-
-Flash the card. This wipes everything on it.
-
-> **Note:** This guide assumes you’ll either SSH over your normal Wi‑Fi network
-> or plug in a monitor + keyboard/mouse for first‑time setup. USB gadget mode
-> is optional and not covered here.
-
-## 2. Wiring
+## 1. Wiring
 
 ### GPIO Pinout (Pi 5 40-pin header)
 
@@ -107,53 +81,25 @@ Pi 5 USB 3.0 port -------- OAK-D Pro USB-C
 Pi 5 USB-C power port ---- Laptop USB-C (power)
 ```
 
-## 3. First Boot
+## 2. Connect to WiFi (if not already connected)
 
-1. Insert the flashed microSD card
-2. Plug in the USB-C power cable from your laptop
-3. Wait ~60 seconds for the Pi to boot and connect to WiFi
-
-Then from your laptop (same network):
-
-```bash
-# SSH in (Bonjour)
-ssh pi@pi.local
-
-# Or use the IP directly
-ssh pi@192.168.5.18
-
-# Copy files to Pi
-scp file.txt pi@192.168.5.18:~/
-
-# Copy files from Pi
-scp -r pi@192.168.5.18:~/recordings/20260129_123456 ~/Downloads/
-```
-
-If `pi.local` doesn't resolve, check your router's admin page for the
-Pi's IP address and use that instead.
-
-### Alternative: use a monitor + keyboard/mouse
-
-If you don’t want to use SSH, connect a monitor and keyboard/mouse and log in
-locally. You can run the same setup commands in a terminal on the Pi.
-
-### If you need to configure WiFi after first boot
-
-If you forgot to set WiFi in Pi Imager, connect a monitor + keyboard and run:
+Open a terminal on the Pi and connect to your network:
 
 ```bash
 sudo nmcli device wifi connect "YOUR_SSID" password "YOUR_PASSWORD"
 ```
 
-Verify:
+Verify the connection:
 
 ```bash
 ip addr show wlan0
 ```
 
-## 4. System Setup
+You should see an IP address assigned. WiFi is needed for installing packages.
 
-Run these commands on the Pi:
+## 3. System Setup
+
+Open a terminal and run these commands:
 
 ```bash
 # update the system
@@ -175,16 +121,16 @@ source ~/.bashrc
 uv --version
 ```
 
-## 5. Clone and Install the Project
+## 4. Install the Project
 
 ```bash
-cd ~
-git clone https://github.com/asimov-robotics-inc/oakd-pi.git
-cd oakd-pi
+cd ~/oakd-pi
 uv sync
 ```
 
-## 6. Verify OAK-D is Detected
+This installs Python 3.11 (managed by uv) and all project dependencies.
+
+## 5. Verify OAK-D is Detected
 
 With the OAK-D plugged into a blue USB 3.0 port:
 
@@ -194,7 +140,7 @@ uv run python -c "import depthai; print(depthai.Device.getAllAvailableDevices())
 
 You should see at least one device listed.
 
-## 7. Test the Capture
+## 6. Test the Capture
 
 ```bash
 uv run python -m oakd_capture
@@ -204,7 +150,7 @@ uv run python -m oakd_capture
 - Press button = start recording (1 beep)
 - Press button again = stop recording (2 beeps)
 
-## 8. Run on Boot (systemd)
+## 7. Run on Boot (systemd)
 
 ```bash
 sudo cp ~/oakd-pi/systemd/oakd-capture.service /etc/systemd/system/
@@ -232,30 +178,54 @@ sudo systemctl stop oakd-capture
 sudo systemctl restart oakd-capture
 ```
 
-## 9. Retrieve Recordings
+## 8. Retrieve Recordings
 
-Recordings are saved to `~/recordings/` on the Pi.
+Recordings are saved to `~/recordings/` on the Pi. Each session gets its own
+timestamped folder.
 
 ```bash
-# list sessions
-ssh pi@pi.local "ls -la ~/recordings/"
-
-# Copy a recording to your PC
-scp -r pi@192.168.5.18:~/recordings/YYYYMMDD_HHMMSS ~/Downloads/
+# list recording sessions
+ls -la ~/recordings/
 ```
 
-Each recording folder contains:
-- `recording_YYYYMMDD_HHMMSS.mcap` - sensor data (viewable in Foxglove Studio)
+Each folder contains:
+- `recording_YYYYMMDD_HHMMSS.mcap` - sensor data (RGB + depth + IMU)
 - `calibration_YYYYMMDD_HHMMSS.json` - camera intrinsics/extrinsics
 - `metadata_YYYYMMDD_HHMMSS.json` - recording config + device info
 
+### Copying recordings to another machine
+
+To transfer recordings off the Pi, you can use a USB drive or SSH from another
+computer on the same network:
+
+```bash
+# from your laptop
+scp -r pi@pi.local:~/recordings/YYYYMMDD_HHMMSS ~/Downloads/
+```
+
+### Setting up SSH (optional)
+
+If you want to access the Pi remotely after initial setup:
+
+```bash
+# on the Pi - enable SSH
+sudo systemctl enable ssh
+sudo systemctl start ssh
+```
+
+Then from another machine on the same network:
+
+```bash
+ssh pi@pi.local
+```
+
 ## Troubleshooting
 
-### Can't SSH / Pi not on network
+### Can't connect to WiFi
 
-- Double-check WiFi credentials were set in Pi Imager
-- Try connecting a monitor + keyboard to configure WiFi manually (see step 3)
-- Make sure your laptop is on the same network
+- Double-check SSID and password (they're case-sensitive)
+- Run `nmcli device wifi list` to see available networks
+- Make sure the Pi's WiFi antenna isn't obstructed
 
 ### GPIO errors
 

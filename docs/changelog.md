@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.2] - 2026-01-29
+
+### Changed
+- Rewrote pi_setup.md for local keyboard/mouse setup (no SSH-first assumption)
+- Simplified README quick start to reference setup guide
+- Fixed README references from H.264 to H.265
+
 ## [0.3.1] - 2026-01-29
 
 ### Added
