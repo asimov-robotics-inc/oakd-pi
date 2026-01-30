@@ -10,7 +10,7 @@
 - **M5: Raw Binary Format** - Drop Foxglove schemas, write raw H.265 + packed IMU bytes
 
 ### Current
-(complete - v0.3.2)
+- **M6: no_ux branch** - Remove button/buzzer hardware, auto-record on startup
 
 ### Upcoming
 (none)

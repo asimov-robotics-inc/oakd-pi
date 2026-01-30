@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0] - 2026-01-29
+
+### Changed
+- Auto-record on startup: recording begins immediately when pipeline is ready
+- Recording runs continuously until SIGTERM/SIGINT shutdown
+
+### Removed
+- Button and buzzer hardware support (hardware.py deleted)
+- `gpiozero` and `lgpio` dependencies
+- `_on_button_press` callback and `_stop_requested` flag
+
 ## [0.3.2] - 2026-01-29
 
 ### Changed
@@ -55,7 +66,7 @@ All notable changes to this project will be documented in this file.
 - MCAP now uses Foxglove-compatible schemas (foxglove.CompressedVideo, foxglove.Imu)
 
 ### Added
-- docs/pi_setup.md - complete Pi setup guide (Wi‑Fi SSH, local setup, systemd)
+- docs/pi_setup.md - complete Pi setup guide (Wi-Fi SSH, local setup, systemd)
 - lgpio dependency for GPIO on newer kernels
 
 ## [0.1.0] - 2026-01-24

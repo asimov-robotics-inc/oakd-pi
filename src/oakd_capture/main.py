@@ -14,8 +14,6 @@ from typing import Optional
 import depthai as dai
 from mcap.writer import Writer
 
-from oakd_capture.hardware import Hardware
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -28,7 +26,6 @@ CAMERA_FPS = 30  # All cameras synced at same FPS
 IMU_HZ = 200  # IMU sample rate
 IR_INTENSITY = 0.5
 QUEUE_TIMEOUT_S = 0.5
-STOP_DRAIN_S = 0.5
 MIN_FREE_GB = 2.0
 
 # Video encoding settings (H.265 on camera)
@@ -131,16 +128,14 @@ class McapRecorder:
 
 
 class CaptureApp:
-    """Main application orchestrating hardware, camera, and recording."""
+    """Main application orchestrating camera and recording (auto-record, no UX hardware)."""
 
     def __init__(self):
         self._state = State.INITIALIZING
         self._running = True
         self._device_id: Optional[str] = None
         self._device: Optional[dai.Device] = None
-        self._hw: Optional[Hardware] = None
         self._recorder: Optional[McapRecorder] = None
-        self._stop_requested = False  # Thread-safe flag for stop request
         self._last_recording_ts: Optional[str] = None
         self._last_recording_dir: Optional[Path] = None
         self._last_queue_warn = {}
@@ -202,25 +197,12 @@ class CaptureApp:
         except Exception as e:
             log.warning(f"Failed to save metadata: {e}")
 
-    def _on_button_press(self) -> None:
-        """Handle button press based on current state.
-
-        Note: This runs in a gpiozero callback thread, so we use a flag
-        to signal the main loop to stop recording (thread-safe).
-        """
-        if self._state == State.READY:
-            self._start_recording()
-        elif self._state == State.RECORDING:
-            # Signal main loop to stop - don't close recorder from callback thread
-            self._stop_requested = True
-
     def _start_recording(self) -> None:
         """Start a new recording."""
         try:
             free_gb = shutil.disk_usage(RECORDINGS_DIR).free / (1024**3)
             if free_gb < MIN_FREE_GB:
                 log.warning(f"Low disk space ({free_gb:.2f} GB free); refusing to start recording")
-                self._hw.buzzer.error()
                 return
         except Exception as e:
             log.warning(f"Disk space check failed: {e}")
@@ -238,11 +220,9 @@ class CaptureApp:
 
         log.info(f"Recording started: {mcap_path}")
         self._state = State.RECORDING
-        self._hw.buzzer.beep_async(1)
 
     def _stop_recording(self) -> None:
         """Stop current recording."""
-        # Change state FIRST to prevent race condition with main loop
         self._state = State.READY
 
         if self._recorder:
@@ -250,7 +230,6 @@ class CaptureApp:
             self._recorder = None
 
         log.info("Recording stopped")
-        self._hw.buzzer.beep_async(2)
 
     def _get_with_timeout(self, queue, timeout_s: float, name: str):
         """Get a queue item with a timeout; log warnings if no data arrives."""
@@ -273,46 +252,11 @@ class CaptureApp:
                 self._last_queue_warn[name] = now
         return item
 
-    def _drain_and_stop_recording(self, q_sync, q_imu):
-        """Drain remaining queued data briefly before stopping."""
-        if not self._recorder:
-            self._stop_recording()
-            return
-
-        end = time.monotonic() + STOP_DRAIN_S
-        while self._running and time.monotonic() < end:
-            msg_group = q_sync.tryGet() if q_sync else None
-            if msg_group:
-                for name, frame in msg_group:
-                    ts_ns = int(frame.getTimestampDevice().total_seconds() * 1e9)
-                    self._recorder.write_frame(name, frame.getData(), ts_ns)
-
-            imu_packets = []
-            if q_imu:
-                try:
-                    imu_packets = q_imu.tryGetAll()
-                except AttributeError:
-                    imu_item = q_imu.tryGet()
-                    imu_packets = [imu_item] if imu_item is not None else []
-
-            if imu_packets:
-                for imu_data in imu_packets:
-                    self._recorder.write_imu(imu_data)
-
-            if not msg_group and not imu_packets:
-                break
-
-        self._stop_recording()
-
     def run(self) -> None:
         """Main application loop."""
-        hw = None
         device = None
 
         try:
-            hw = Hardware()
-            self._hw = hw
-
             log.info("Initializing camera...")
 
             # Connect to device first to enable IR
@@ -397,29 +341,13 @@ class CaptureApp:
                 # Ensure base recordings directory exists
                 RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 
-                # Ready state
+                # Ready - immediately start recording
                 self._state = State.READY
-                log.info("Device ready")
-                hw.buzzer.ready()
+                log.info("Device ready, starting recording automatically")
+                self._start_recording()
 
-                # Register button callback
-                hw.button.set_callback(self._on_button_press)
-
-                # Main loop
+                # Main loop - record continuously until shutdown
                 while self._running and pipeline.isRunning():
-                    # Check for stop request from button callback (thread-safe)
-                    if self._stop_requested:
-                        self._stop_requested = False
-                        self._drain_and_stop_recording(q_sync, q_imu)
-                        if self._last_recording_ts and self._last_recording_dir:
-                            self._save_metadata(
-                                self._last_recording_dir,
-                                self._last_recording_ts,
-                                self._last_recording_dir / f"recording_{self._last_recording_ts}.mcap",
-                            )
-                            self._last_recording_ts = None
-                            self._last_recording_dir = None
-
                     if self._state != State.RECORDING or not self._recorder:
                         time.sleep(0.05)
                         continue
@@ -439,11 +367,6 @@ class CaptureApp:
 
         except Exception as e:
             log.exception(f"Application error: {e}")
-            if hw:
-                try:
-                    hw.buzzer.error()
-                except Exception:
-                    pass
 
         finally:
             log.info("Cleaning up...")
@@ -451,7 +374,7 @@ class CaptureApp:
             if self._recorder:
                 self._recorder.close()
                 self._recorder = None
-            # Save metadata if recording ended unexpectedly
+            # Save metadata if recording was active
             if self._last_recording_ts and self._last_recording_dir:
                 self._save_metadata(
                     self._last_recording_dir,
@@ -460,9 +383,6 @@ class CaptureApp:
                 )
                 self._last_recording_ts = None
                 self._last_recording_dir = None
-            # Cleanup hardware
-            if hw:
-                hw.cleanup()
             log.info("Cleanup complete")
 
 
