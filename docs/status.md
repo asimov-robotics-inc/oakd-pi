@@ -8,9 +8,8 @@
 - **M3: Deployment** - systemd service file
 - **M4: Testing & Fixes** - Thread-safe recording, Pi setup docs
 - **M5: Raw Binary Format** - Drop Foxglove schemas, write raw H.265 + packed IMU bytes
-
-### Current
 - **M6: no_ux branch** - Remove button/buzzer hardware, auto-record on startup
+- **M7: Setup scripts & doc cleanup** - Add setup.sh/run.sh/stop.sh, strip button/buzzer from all docs
 
 ### Upcoming
 (none)

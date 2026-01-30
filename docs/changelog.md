@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.1] - 2026-01-30
+
+### Added
+- `setup.sh` - one-command system setup (apt deps, udev rules, uv, uv sync)
+- `run.sh` - install, enable, and start systemd service
+- `stop.sh` - stop and disable systemd service
+
+### Changed
+- Rewrote `docs/pi_setup.md`: removed wiring/button/buzzer sections, replaced manual setup steps with `./setup.sh`, replaced systemd commands with `./run.sh` / `./stop.sh`
+- Rewrote `README.md`: removed button/buzzer from features/hardware, updated quick start to use `setup.sh`, updated run-on-boot to use `run.sh`/`stop.sh`
+- Updated `PROJECT_SPEC.md`: removed button/buzzer/gpiozero references, updated to auto-record behavior
+
 ## [0.4.0] - 2026-01-29
 
 ### Changed

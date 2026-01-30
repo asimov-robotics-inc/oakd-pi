@@ -12,11 +12,13 @@ oakd-pi/
 ├── docs/
 │   ├── status.md            # Milestone tracking
 │   └── changelog.md         # Version history
+├── setup.sh                 # System setup (deps, udev, uv)
+├── run.sh                   # Enable + start systemd service
+├── stop.sh                  # Stop + disable systemd service
 ├── src/oakd_capture/
 │   ├── __init__.py
 │   ├── __main__.py          # Entry point
-│   ├── main.py              # App orchestration, camera, recording
-│   └── hardware.py          # Button + buzzer GPIO
+│   └── main.py              # App orchestration, camera, recording
 └── systemd/
     └── oakd-capture.service
 ```

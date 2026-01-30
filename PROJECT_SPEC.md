@@ -2,25 +2,23 @@
 
 ## Project Goal
 
-Build a high-quality egocentric data capture device for training robots. The system runs headlessly on a Raspberry Pi with an OAK-D Pro camera, using a button for start/stop control and a buzzer for audio feedback. Data is saved in MCAP format for offline processing by robotics companies (1X, Figure, Physical Intelligence, Persona AI, etc.).
+Build a high-quality egocentric data capture device for training robots. The system runs headlessly on a Raspberry Pi with an OAK-D Pro camera, auto-recording on startup. Data is saved in MCAP format for offline processing by robotics companies (1X, Figure, Physical Intelligence, Persona AI, etc.).
 
 ## Hardware
 
 - Raspberry Pi (with SD card storage)
 - OAK-D Pro (will eventually swap for OAK-D Pro W)
-- Button (GPIO 17) - start/stop recording
-- Buzzer (GPIO 18) - audio feedback
 - Battery pack
 
 ## Functional Requirements
 
 ### Boot Behavior
 - Script runs automatically on Pi boot via systemd
-- 3 beeps when device is ready to record
+- Recording begins immediately when pipeline is ready
 
 ### Recording Control
-- Button press starts recording (1 beep)
-- Button press stops recording (2 beeps)
+- Recording starts automatically on startup
+- Recording stops on SIGTERM/SIGINT (shutdown or service stop)
 - Each recording gets its own timestamped folder
 
 ### Data Capture
@@ -49,14 +47,4 @@ Build a high-quality egocentric data capture device for training robots. The sys
 
 - Python 3.11
 - DepthAI SDK v3 for camera control and MCAP recording
-- gpiozero for button/buzzer GPIO
 - systemd for autostart
-
-## Audio Feedback
-
-| Event | Beeps |
-|-------|-------|
-| Device ready | 3 |
-| Recording started | 1 |
-| Recording stopped | 2 |
-| Error | Long beep |

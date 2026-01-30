@@ -11,7 +11,7 @@ Headless data capture system for robotics training using Raspberry Pi 5 + OAK-D 
 - On-device H.265 encoding (10 Mbps, near-lossless)
 - **Software-synchronized** RGB + depth (Sync node, <10ms threshold)
 - Device timestamps for all streams
-- Button start/stop with buzzer feedback
+- Auto-record on startup
 - MCAP format (raw binary H.265 + packed IMU)
 - Runs on boot via systemd
 
@@ -19,30 +19,33 @@ Headless data capture system for robotics training using Raspberry Pi 5 + OAK-D 
 
 - Raspberry Pi 5
 - OAK-D Pro (USB-C)
-- Momentary button (GPIO 17)
-- Active buzzer (GPIO 18)
 - USB-C cable for Pi connection
 
 ## Quick Start
 
-See [Pi Setup Guide](docs/pi_setup.md) for full first-time setup with wiring
-diagrams and system dependencies.
+See [Pi Setup Guide](docs/pi_setup.md) for full first-time setup.
 
 ```bash
 cd ~/oakd-pi
 
-# Install uv (if not already installed)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-source ~/.bashrc
+# Install system deps, uv, and project packages
+./setup.sh
 
-# Install dependencies
-uv sync
-
-# Run
+# Run manually
 uv run python -m oakd_capture
 ```
 
-3 beeps = ready. Press button to start/stop recording.
+Recording begins automatically on startup.
+
+## Run on Boot
+
+```bash
+# Enable and start the systemd service
+./run.sh
+
+# Stop and disable
+./stop.sh
+```
 
 ## Recordings
 
@@ -52,15 +55,6 @@ Saved to `~/recordings/YYYYMMDD_HHMMSS/` (timestamp is UTC):
 - `metadata_YYYYMMDD_HHMMSS.json` - recording config + device info
 
 MCAP payloads contain raw H.265 video frames and 48-byte packed IMU binary. Not Foxglove-compatible out of the box.
-
-## Run on Boot
-
-```bash
-sudo cp systemd/oakd-capture.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable oakd-capture
-sudo systemctl start oakd-capture
-```
 
 ## Documentation
 
