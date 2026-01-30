@@ -1,21 +1,22 @@
 [Unit]
 Description=OAK-D Egocentric Data Capture
-After=multi-user.target
+After=local-fs.target
+Wants=local-fs.target
 
 [Service]
 Type=simple
 User=pi
 WorkingDirectory=/home/pi/oakd-pi
-ExecStart=/home/pi/.local/bin/uv run python -m oakd_capture
+ExecStart=/home/pi/oakd-pi/.venv/bin/python -m oakd_capture
 Restart=always
 RestartSec=2
-StartLimitIntervalSec=30
+StartLimitIntervalSec=60
 StartLimitBurst=10
 StandardOutput=journal
 StandardError=journal
 
-# Graceful shutdown
-TimeoutStopSec=30
+# Graceful shutdown — app exits fast, no need for a long timeout
+TimeoutStopSec=10
 KillSignal=SIGTERM
 
 [Install]

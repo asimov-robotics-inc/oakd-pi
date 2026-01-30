@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.4] - 2026-01-30
+
+### Changed
+- systemd service starts after `local-fs.target` instead of `multi-user.target` (no longer waits for networking)
+- ExecStart uses `.venv/bin/python` directly instead of `uv run`, eliminating venv resolution overhead on every boot
+- Reduced `TimeoutStopSec` from 30s to 10s (app shuts down in under a second)
+- Increased `StartLimitIntervalSec` from 30s to 60s for more restart headroom during early boot
+
+## [0.4.3] - 2026-01-30
+
+### Changed
+- MCAP file is fsynced to disk every 5 seconds, limiting data loss on hard power cut to ~5s of frames
+- JSON metadata is written at recording start instead of only on clean shutdown
+
+### Added
+- `McapRecorder.flush()` method for periodic fsync of the recording file
+
 ## [0.4.2] - 2026-01-30
 
 ### Added

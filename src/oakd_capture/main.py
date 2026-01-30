@@ -3,6 +3,7 @@
 import signal
 import logging
 import json
+import os
 import struct
 import time
 import shutil
@@ -34,6 +35,7 @@ H265_BITRATE = 10_000_000  # 10 Mbps - high quality for 720p
 
 # Synchronization settings
 SYNC_THRESHOLD_MS = 10  # Max timestamp difference for synchronized frames
+FSYNC_INTERVAL_S = 5.0  # Flush MCAP to disk every N seconds
 
 
 class State(Enum):
@@ -115,6 +117,12 @@ class McapRecorder:
                 publish_time=ts_ns,
                 data=data,
             )
+
+    def flush(self):
+        """Flush buffered data to disk so it survives a hard power cut."""
+        if self._file and not self._file.closed:
+            self._file.flush()
+            os.fsync(self._file.fileno())
 
     def close(self):
         """Close the MCAP file."""
@@ -217,6 +225,9 @@ class CaptureApp:
         self._recorder.open()
         if self._device:
             self._save_calibration(self._device, recording_dir, timestamp)
+
+        # Write metadata immediately so it exists even after a hard power cut
+        self._save_metadata(recording_dir, timestamp, mcap_path)
 
         log.info(f"Recording started: {mcap_path}")
         self._state = State.RECORDING
@@ -347,6 +358,7 @@ class CaptureApp:
                 self._start_recording()
 
                 # Main loop - record continuously until shutdown
+                last_fsync = time.monotonic()
                 while self._running and pipeline.isRunning():
                     if self._state != State.RECORDING or not self._recorder:
                         time.sleep(0.05)
@@ -365,6 +377,12 @@ class CaptureApp:
                         for imu_data in imu_packets:
                             self._recorder.write_imu(imu_data)
 
+                    # Periodic fsync to survive hard power cuts
+                    now = time.monotonic()
+                    if now - last_fsync >= FSYNC_INTERVAL_S:
+                        self._recorder.flush()
+                        last_fsync = now
+
         except Exception as e:
             log.exception(f"Application error: {e}")
 
@@ -374,15 +392,6 @@ class CaptureApp:
             if self._recorder:
                 self._recorder.close()
                 self._recorder = None
-            # Save metadata if recording was active
-            if self._last_recording_ts and self._last_recording_dir:
-                self._save_metadata(
-                    self._last_recording_dir,
-                    self._last_recording_ts,
-                    self._last_recording_dir / f"recording_{self._last_recording_ts}.mcap",
-                )
-                self._last_recording_ts = None
-                self._last_recording_dir = None
             log.info("Cleanup complete")
 
 
