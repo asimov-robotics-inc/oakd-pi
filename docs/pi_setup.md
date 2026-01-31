@@ -102,10 +102,9 @@ ls -la ~/recordings/
 ```
 
 Each folder contains:
-- `recording_YYYYMMDD_HHMMSS.mcap` - sensor data (RGB + stereo L/R + IMU)
+- `recording_YYYYMMDD_HHMMSS.mcap` - sensor data (RGB + depth + IMU)
 - `calibration_YYYYMMDD_HHMMSS.json` - camera intrinsics/extrinsics
 - `metadata_YYYYMMDD_HHMMSS.json` - recording config + device info
-- `sync_index_YYYYMMDD_HHMMSS.csv` - stream, sequence, timestamp for offline sync
 
 ### Copying recordings to another machine
 
@@ -145,7 +144,7 @@ ssh pi@pi.local
 
 Use the blue USB 3.0 ports, not USB 2.0. The current config uses:
 - RGB: 640x480
-- Stereo: left + right at 640x480
+- Depth: aligned to RGB (640x480, LZ4-compressed)
 
 If errors persist, try a powered USB hub or reduce FPS/resolution.
 

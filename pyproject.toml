@@ -5,6 +5,7 @@ description = "Egocentric data capture kit using OAK-D Pro for robotics training
 requires-python = ">=3.11"
 dependencies = [
     "depthai>=3.0.0",
+    "lz4>=4.3.3",
     "mcap>=1.1.0",
 ]
 

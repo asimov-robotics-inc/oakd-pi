@@ -9,10 +9,11 @@ import time
 import shutil
 from enum import Enum, auto
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import depthai as dai
+import lz4.frame as lz4f
 from mcap.writer import Writer
 
 logging.basicConfig(
@@ -36,7 +37,8 @@ RESOLUTION = (640, 480)  # 480p for all cameras
 H265_BITRATE = 6_000_000  # 6 Mbps - high quality for 480p
 
 # Synchronization settings
-SYNC_METHOD = "offline"
+SYNC_METHOD = "device_sync_node"
+SYNC_THRESHOLD_MS = 10
 FSYNC_INTERVAL_S = 5.0  # Flush MCAP to disk every N seconds
 
 
@@ -63,7 +65,7 @@ class McapRecorder:
         self._writer.start()
 
         # Register channels (raw bytes, no schema)
-        for topic_name in ("rgb", "left", "right", "imu"):
+        for topic_name in ("rgb", "depth", "imu"):
             self._channels[topic_name] = self._writer.register_channel(
                 topic=f"/oak/{topic_name}",
                 message_encoding="",
@@ -79,7 +81,10 @@ class McapRecorder:
                 "video_encoding": "h265",
                 "imu_hz": str(IMU_HZ),
                 "sync_method": SYNC_METHOD,
+                "sync_threshold_ms": str(SYNC_THRESHOLD_MS),
                 "timestamp_source": "device",
+                "depth_encoding": "raw16_mm_lz4",
+                "depth_compression": "lz4frame",
             },
         )
         log.info(f"Opened MCAP: {self._filepath}")
@@ -149,7 +154,6 @@ class CaptureApp:
         self._recorder: Optional[McapRecorder] = None
         self._last_recording_ts: Optional[str] = None
         self._last_recording_dir: Optional[Path] = None
-        self._sync_index_file = None
         self._last_queue_warn = {}
         self._segment_start_monotonic: Optional[float] = None
         self._last_disk_check = 0.0
@@ -182,31 +186,29 @@ class CaptureApp:
         except Exception as e:
             log.warning(f"Failed to save calibration: {e}")
 
-    def _save_metadata(self, recording_dir: Path, timestamp: str, mcap_path: Path, sync_index_path: Path) -> None:
+    def _save_metadata(self, recording_dir: Path, timestamp: str, mcap_path: Path) -> None:
         """Save recording metadata."""
         try:
             metadata = {
                 "recording_start": timestamp,
                 "mcap_path": str(mcap_path),
-                "sync_index_path": str(sync_index_path),
                 "device_id": self._device_id,
                 "recording_config": {
                     "resolution": f"{RESOLUTION[0]}x{RESOLUTION[1]}",
                     "camera_fps": CAMERA_FPS,
                     "imu_hz": IMU_HZ,
                     "sync_method": SYNC_METHOD,
+                    "sync_threshold_ms": SYNC_THRESHOLD_MS,
                     "timestamp_source": "device",
-                    "sync_offline": {
-                        "align_by": ["sequence_number", "device_timestamp_ns"],
-                        "notes": "Streams are recorded independently; align offline using device timestamps or sequence numbers.",
-                    },
                     "ir_intensity": IR_INTENSITY,
                     "video_encoding": "h265",
                     "h265_bitrate": H265_BITRATE,
-                    "stereo": {
-                        "left_right_check": False,
-                        "rectification": False,
-                        "encoding": "h265",
+                    "depth": {
+                        "aligned_to": "rgb",
+                        "left_right_check": True,
+                        "rectification": True,
+                        "depth_encoding": "raw16_mm_lz4",
+                        "depth_compression": "lz4frame",
                     },
                 },
             }
@@ -261,7 +263,6 @@ class CaptureApp:
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         recording_dir = self._ensure_recordings_dir(timestamp)
         mcap_path = recording_dir / f"recording_{timestamp}.mcap"
-        sync_index_path = recording_dir / f"sync_index_{timestamp}.csv"
         self._last_recording_ts = timestamp
         self._last_recording_dir = recording_dir
 
@@ -271,18 +272,7 @@ class CaptureApp:
             self._save_calibration(self._device, recording_dir, timestamp)
 
         # Write metadata immediately so it exists even after a hard power cut
-        self._save_metadata(recording_dir, timestamp, mcap_path, sync_index_path)
-
-        # Open sync index sidecar for offline alignment
-        try:
-            self._sync_index_file = open(sync_index_path, "w")
-            self._sync_index_file.write("stream,seq,timestamp_ns\n")
-            self._sync_index_file.flush()
-            os.fsync(self._sync_index_file.fileno())
-            self._fsync_dir(recording_dir)
-        except Exception as e:
-            self._sync_index_file = None
-            log.warning(f"Failed to open sync index file: {e}")
+        self._save_metadata(recording_dir, timestamp, mcap_path)
 
         log.info(f"Recording started: {mcap_path}")
         self._state = State.RECORDING
@@ -296,14 +286,6 @@ class CaptureApp:
         if self._recorder:
             self._recorder.close()
             self._recorder = None
-        if self._sync_index_file:
-            try:
-                self._sync_index_file.flush()
-                os.fsync(self._sync_index_file.fileno())
-            except Exception:
-                pass
-            self._sync_index_file.close()
-            self._sync_index_file = None
 
         log.info("Recording stopped")
 
@@ -323,16 +305,6 @@ class CaptureApp:
                 log.warning(f"No data from {name} queue for >5s")
                 self._last_queue_warn[name] = now
         return items
-
-    def _write_sync_index(self, stream: str, seq: int, timestamp_ns: int) -> None:
-        """Write a row to the sync index sidecar if enabled."""
-        if not self._sync_index_file:
-            return
-        try:
-            self._sync_index_file.write(f"{stream},{seq},{timestamp_ns}\n")
-        except Exception as e:
-            log.warning(f"Failed to write sync index: {e}")
-            self._sync_index_file = None
 
     def run(self) -> None:
         """Main application loop."""
@@ -379,18 +351,13 @@ class CaptureApp:
                     left_out = cam_left.requestOutput(RESOLUTION, type=dai.ImgFrame.Type.GRAY8)
                     right_out = cam_right.requestOutput(RESOLUTION, type=dai.ImgFrame.Type.GRAY8)
 
-                    # Convert mono frames to NV12 for H.265 encoder
-                    manip_left = pipeline.create(dai.node.ImageManip)
-                    manip_left.initialConfig.setOutputSize(RESOLUTION[0], RESOLUTION[1])
-                    manip_left.initialConfig.setFrameType(dai.ImgFrame.Type.NV12)
-                    manip_left.setMaxOutputFrameSize(int(RESOLUTION[0] * RESOLUTION[1] * 3 / 2))
-                    left_out.link(manip_left.inputImage)
-
-                    manip_right = pipeline.create(dai.node.ImageManip)
-                    manip_right.initialConfig.setOutputSize(RESOLUTION[0], RESOLUTION[1])
-                    manip_right.initialConfig.setFrameType(dai.ImgFrame.Type.NV12)
-                    manip_right.setMaxOutputFrameSize(int(RESOLUTION[0] * RESOLUTION[1] * 3 / 2))
-                    right_out.link(manip_right.inputImage)
+                    # StereoDepth (on-device depth/disparity from mono pair)
+                    stereo = pipeline.create(dai.node.StereoDepth)
+                    left_out.link(stereo.left)
+                    right_out.link(stereo.right)
+                    stereo.setRectification(True)
+                    stereo.setLeftRightCheck(True)
+                    stereo.setDepthAlign(dai.CameraBoardSocket.CAM_A)
 
                     # H.265 video encoder (encode on camera, not Pi)
                     enc_rgb = pipeline.create(dai.node.VideoEncoder)
@@ -398,15 +365,11 @@ class CaptureApp:
                     enc_rgb.setBitrate(H265_BITRATE)
                     rgb_out.link(enc_rgb.input)
 
-                    enc_left = pipeline.create(dai.node.VideoEncoder)
-                    enc_left.setDefaultProfilePreset(CAMERA_FPS, dai.VideoEncoderProperties.Profile.H265_MAIN)
-                    enc_left.setBitrate(H265_BITRATE)
-                    manip_left.out.link(enc_left.input)
-
-                    enc_right = pipeline.create(dai.node.VideoEncoder)
-                    enc_right.setDefaultProfilePreset(CAMERA_FPS, dai.VideoEncoderProperties.Profile.H265_MAIN)
-                    enc_right.setBitrate(H265_BITRATE)
-                    manip_right.out.link(enc_right.input)
+                    # Sync node - synchronizes RGB + depth by timestamp
+                    sync = pipeline.create(dai.node.Sync)
+                    sync.setSyncThreshold(timedelta(milliseconds=SYNC_THRESHOLD_MS))
+                    enc_rgb.out.link(sync.inputs["rgb"])
+                    stereo.depth.link(sync.inputs["depth"])
 
                     # IMU (separate - runs at higher rate)
                     imu = pipeline.create(dai.node.IMU)
@@ -415,16 +378,14 @@ class CaptureApp:
                     imu.setBatchReportThreshold(1)
                     imu.setMaxBatchReports(10)
 
-                    # Output queues - encoded streams + IMU
-                    q_rgb = enc_rgb.out.createOutputQueue(maxSize=8, blocking=False)
-                    q_left = enc_left.out.createOutputQueue(maxSize=8, blocking=False)
-                    q_right = enc_right.out.createOutputQueue(maxSize=8, blocking=False)
+                    # Output queues - synchronized RGB + depth + IMU
+                    q_sync = sync.out.createOutputQueue(maxSize=2, blocking=True)
                     q_imu = imu.out.createOutputQueue(maxSize=100, blocking=False)
 
                     log.info(
                         f"Pipeline: {RESOLUTION[0]}x{RESOLUTION[1]} @ {CAMERA_FPS}fps, "
-                        f"H.265 @ {H265_BITRATE//1_000_000}Mbps, stereo L/R + RGB, "
-                        f"offline sync"
+                        f"H.265 @ {H265_BITRATE//1_000_000}Mbps, RGB + depth aligned, "
+                        f"sync threshold {SYNC_THRESHOLD_MS}ms"
                     )
 
                     # Start pipeline
@@ -450,37 +411,23 @@ class CaptureApp:
                             for imu_data in imu_packets:
                                 self._recorder.write_imu(imu_data)
 
-                        rgb_packets = self._drain_queue(q_rgb, "rgb")
-                        left_packets = self._drain_queue(q_left, "left")
-                        right_packets = self._drain_queue(q_right, "right")
-
-                        if not rgb_packets and not left_packets and not right_packets and not imu_packets:
+                        sync_msgs = self._drain_queue(q_sync, "sync")
+                        if sync_msgs:
+                            for sync_msg in sync_msgs:
+                                for name, frame in sync_msg:
+                                    ts = int(frame.getTimestampDevice().total_seconds() * 1e9)
+                                    data = frame.getData()
+                                    if name == "depth":
+                                        data = lz4f.compress(data)
+                                    self._recorder.write_frame(name, data, ts)
+                        if not sync_msgs and not imu_packets:
                             time.sleep(0.005)
                             continue
-
-                        for pkt in rgb_packets:
-                            ts = int(pkt.getTimestampDevice().total_seconds() * 1e9)
-                            self._recorder.write_frame("rgb", pkt.getData(), ts)
-                            self._write_sync_index("rgb", pkt.getSequenceNum(), ts)
-                        for pkt in left_packets:
-                            ts = int(pkt.getTimestampDevice().total_seconds() * 1e9)
-                            self._recorder.write_frame("left", pkt.getData(), ts)
-                            self._write_sync_index("left", pkt.getSequenceNum(), ts)
-                        for pkt in right_packets:
-                            ts = int(pkt.getTimestampDevice().total_seconds() * 1e9)
-                            self._recorder.write_frame("right", pkt.getData(), ts)
-                            self._write_sync_index("right", pkt.getSequenceNum(), ts)
 
                         # Periodic fsync to survive hard power cuts
                         now = time.monotonic()
                         if now - last_fsync >= FSYNC_INTERVAL_S:
                             self._recorder.flush()
-                            if self._sync_index_file:
-                                try:
-                                    self._sync_index_file.flush()
-                                    os.fsync(self._sync_index_file.fileno())
-                                except Exception:
-                                    pass
                             last_fsync = now
 
                         # Periodic disk space check
@@ -509,14 +456,6 @@ class CaptureApp:
                 if self._recorder:
                     self._recorder.close()
                     self._recorder = None
-                if self._sync_index_file:
-                    try:
-                        self._sync_index_file.flush()
-                        os.fsync(self._sync_index_file.fileno())
-                    except Exception:
-                        pass
-                    self._sync_index_file.close()
-                    self._sync_index_file = None
                 self._segment_start_monotonic = None
                 if device is not None:
                     try:

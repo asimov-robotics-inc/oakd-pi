@@ -9,13 +9,12 @@ All notable changes to this project will be documented in this file.
 - Periodic disk space checks during recording
 - Durable fsync of metadata and calibration files
 - Device init retry loop to keep recording attempts alive until the camera is available
-- Sync index sidecar (`sync_index_*.csv`) with stream/sequence/timestamp for offline alignment
+ - LZ4 compression for depth frames to reduce storage size
 
 ### Changed
 - systemd now restarts indefinitely without start-limit throttling
-- Replaced on-device depth recording with stereo left/right H.265 streams (depth computed offline)
-- Removed host-side alignment; streams are aligned offline by sequence number or timestamps
-- Reduced capture resolution to 640x480 with 6 Mbps bitrate to improve FPS
+- Reverted to on-device depth aligned to RGB for synchronized RGBD capture
+- Reduced capture resolution to 640x480 with 6 Mbps RGB bitrate to improve FPS
 
 ### Removed
 - Bundle-based deployment scripts; manual setup is now the only supported path
