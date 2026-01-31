@@ -25,7 +25,7 @@ log = logging.getLogger(__name__)
 # Configuration
 RECORDINGS_DIR = Path.home() / "recordings"
 CAMERA_FPS = 30  # All cameras synced at same FPS
-IMU_HZ = 200  # IMU sample rate
+IMU_HZ = 100  # IMU sample rate
 IR_INTENSITY = 0.5
 MIN_FREE_GB = 2.0
 SEGMENT_MINUTES = 10
@@ -33,7 +33,7 @@ DISK_CHECK_INTERVAL_S = 60.0
 DEVICE_RETRY_INTERVAL_S = 5.0
 
 # Video encoding settings (H.265 on camera)
-RESOLUTION = (1280, 720)  # 480p for all cameras
+RESOLUTION = (640, 480)  # 480p for all cameras
 H265_BITRATE = 6_000_000  # 6 Mbps - high quality for 480p
 
 # Synchronization settings
