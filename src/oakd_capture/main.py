@@ -341,48 +341,48 @@ class CaptureApp:
                         sensorFps=CAMERA_FPS,
                     )
 
-                # Get camera outputs (encoder-friendly formats)
-                rgb_out = cam_rgb.requestOutput(RESOLUTION, type=dai.ImgFrame.Type.NV12)
-                left_out = cam_left.requestOutput(RESOLUTION, type=dai.ImgFrame.Type.GRAY8)
-                right_out = cam_right.requestOutput(RESOLUTION, type=dai.ImgFrame.Type.GRAY8)
+                    # Get camera outputs (encoder-friendly formats)
+                    rgb_out = cam_rgb.requestOutput(RESOLUTION, type=dai.ImgFrame.Type.NV12)
+                    left_out = cam_left.requestOutput(RESOLUTION, type=dai.ImgFrame.Type.GRAY8)
+                    right_out = cam_right.requestOutput(RESOLUTION, type=dai.ImgFrame.Type.GRAY8)
 
-                # Convert mono frames to NV12 for H.265 encoder
-                manip_left = pipeline.create(dai.node.ImageManip)
-                manip_left.initialConfig.setResize(RESOLUTION[0], RESOLUTION[1])
-                manip_left.initialConfig.setFrameType(dai.ImgFrame.Type.NV12)
-                manip_left.setMaxOutputFrameSize(int(RESOLUTION[0] * RESOLUTION[1] * 3 / 2))
-                left_out.link(manip_left.inputImage)
+                    # Convert mono frames to NV12 for H.265 encoder
+                    manip_left = pipeline.create(dai.node.ImageManip)
+                    manip_left.initialConfig.setResize(RESOLUTION[0], RESOLUTION[1])
+                    manip_left.initialConfig.setFrameType(dai.ImgFrame.Type.NV12)
+                    manip_left.setMaxOutputFrameSize(int(RESOLUTION[0] * RESOLUTION[1] * 3 / 2))
+                    left_out.link(manip_left.inputImage)
 
-                manip_right = pipeline.create(dai.node.ImageManip)
-                manip_right.initialConfig.setResize(RESOLUTION[0], RESOLUTION[1])
-                manip_right.initialConfig.setFrameType(dai.ImgFrame.Type.NV12)
-                manip_right.setMaxOutputFrameSize(int(RESOLUTION[0] * RESOLUTION[1] * 3 / 2))
-                right_out.link(manip_right.inputImage)
+                    manip_right = pipeline.create(dai.node.ImageManip)
+                    manip_right.initialConfig.setResize(RESOLUTION[0], RESOLUTION[1])
+                    manip_right.initialConfig.setFrameType(dai.ImgFrame.Type.NV12)
+                    manip_right.setMaxOutputFrameSize(int(RESOLUTION[0] * RESOLUTION[1] * 3 / 2))
+                    right_out.link(manip_right.inputImage)
 
                     # H.265 video encoder (encode on camera, not Pi)
-                enc_rgb = pipeline.create(dai.node.VideoEncoder)
-                enc_rgb.setDefaultProfilePreset(CAMERA_FPS, dai.VideoEncoderProperties.Profile.H265_MAIN)
-                enc_rgb.setBitrate(H265_BITRATE)
-                rgb_out.link(enc_rgb.input)
+                    enc_rgb = pipeline.create(dai.node.VideoEncoder)
+                    enc_rgb.setDefaultProfilePreset(CAMERA_FPS, dai.VideoEncoderProperties.Profile.H265_MAIN)
+                    enc_rgb.setBitrate(H265_BITRATE)
+                    rgb_out.link(enc_rgb.input)
 
-                enc_left = pipeline.create(dai.node.VideoEncoder)
-                enc_left.setDefaultProfilePreset(CAMERA_FPS, dai.VideoEncoderProperties.Profile.H265_MAIN)
-                enc_left.setBitrate(H265_BITRATE)
-                manip_left.out.link(enc_left.input)
+                    enc_left = pipeline.create(dai.node.VideoEncoder)
+                    enc_left.setDefaultProfilePreset(CAMERA_FPS, dai.VideoEncoderProperties.Profile.H265_MAIN)
+                    enc_left.setBitrate(H265_BITRATE)
+                    manip_left.out.link(enc_left.input)
 
-                enc_right = pipeline.create(dai.node.VideoEncoder)
-                enc_right.setDefaultProfilePreset(CAMERA_FPS, dai.VideoEncoderProperties.Profile.H265_MAIN)
-                enc_right.setBitrate(H265_BITRATE)
-                manip_right.out.link(enc_right.input)
+                    enc_right = pipeline.create(dai.node.VideoEncoder)
+                    enc_right.setDefaultProfilePreset(CAMERA_FPS, dai.VideoEncoderProperties.Profile.H265_MAIN)
+                    enc_right.setBitrate(H265_BITRATE)
+                    manip_right.out.link(enc_right.input)
 
-                # Sync node - synchronizes camera streams by timestamp
-                sync = pipeline.create(dai.node.Sync)
-                sync.setSyncThreshold(timedelta(milliseconds=SYNC_THRESHOLD_MS))
+                    # Sync node - synchronizes camera streams by timestamp
+                    sync = pipeline.create(dai.node.Sync)
+                    sync.setSyncThreshold(timedelta(milliseconds=SYNC_THRESHOLD_MS))
 
-                # Link encoded outputs to sync inputs
-                enc_rgb.out.link(sync.inputs["rgb"])
-                enc_left.out.link(sync.inputs["left"])
-                enc_right.out.link(sync.inputs["right"])
+                    # Link encoded outputs to sync inputs
+                    enc_rgb.out.link(sync.inputs["rgb"])
+                    enc_left.out.link(sync.inputs["left"])
+                    enc_right.out.link(sync.inputs["right"])
 
                     # IMU (separate - runs at higher rate)
                     imu = pipeline.create(dai.node.IMU)
@@ -397,8 +397,9 @@ class CaptureApp:
 
                     log.info(
                         f"Pipeline: {RESOLUTION[0]}x{RESOLUTION[1]} @ {CAMERA_FPS}fps, "
-                    f"H.265 @ {H265_BITRATE//1_000_000}Mbps, stereo L/R + RGB, sync threshold {SYNC_THRESHOLD_MS}ms"
-                )
+                        f"H.265 @ {H265_BITRATE//1_000_000}Mbps, stereo L/R + RGB, "
+                        f"sync threshold {SYNC_THRESHOLD_MS}ms"
+                    )
 
                     # Start pipeline
                     pipeline.start()
