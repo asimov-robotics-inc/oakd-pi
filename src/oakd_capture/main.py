@@ -25,7 +25,7 @@ log = logging.getLogger(__name__)
 # Configuration
 RECORDINGS_DIR = Path.home() / "recordings"
 CAMERA_FPS = 30  # All cameras synced at same FPS
-IMU_HZ = 200  # IMU sample rate
+IMU_HZ = 100  # IMU sample rate
 IR_INTENSITY = 0.5
 MIN_FREE_GB = 2.0
 SEGMENT_MINUTES = 10
@@ -358,6 +358,7 @@ class CaptureApp:
                     stereo.setRectification(True)
                     stereo.setLeftRightCheck(True)
                     stereo.setDepthAlign(dai.CameraBoardSocket.CAM_A)
+                    stereo.setOutputSize(RESOLUTION[0], RESOLUTION[1])
 
                     # H.265 video encoder (encode on camera, not Pi)
                     enc_rgb = pipeline.create(dai.node.VideoEncoder)
@@ -368,6 +369,7 @@ class CaptureApp:
                     # Sync node - synchronizes RGB + depth by timestamp
                     sync = pipeline.create(dai.node.Sync)
                     sync.setSyncThreshold(timedelta(milliseconds=SYNC_THRESHOLD_MS))
+                    sync.setSyncAttempts(0)
                     enc_rgb.out.link(sync.inputs["rgb"])
                     stereo.depth.link(sync.inputs["depth"])
 
@@ -375,8 +377,8 @@ class CaptureApp:
                     imu = pipeline.create(dai.node.IMU)
                     imu.enableIMUSensor(dai.IMUSensor.ACCELEROMETER_RAW, IMU_HZ)
                     imu.enableIMUSensor(dai.IMUSensor.GYROSCOPE_RAW, IMU_HZ)
-                    imu.setBatchReportThreshold(1)
-                    imu.setMaxBatchReports(10)
+                    imu.setBatchReportThreshold(5)
+                    imu.setMaxBatchReports(20)
 
                     # Output queues - synchronized RGB + depth + IMU
                     q_sync = sync.out.createOutputQueue(maxSize=2, blocking=True)
@@ -411,18 +413,18 @@ class CaptureApp:
                             for imu_data in imu_packets:
                                 self._recorder.write_imu(imu_data)
 
-                        sync_msgs = self._drain_queue(q_sync, "sync")
-                        if sync_msgs:
-                            for sync_msg in sync_msgs:
-                                for name, frame in sync_msg:
-                                    ts = int(frame.getTimestampDevice().total_seconds() * 1e9)
-                                    data = frame.getData()
-                                    if name == "depth":
-                                        data = lz4f.compress(data)
-                                    self._recorder.write_frame(name, data, ts)
-                        if not sync_msgs and not imu_packets:
-                            time.sleep(0.005)
-                            continue
+                        try:
+                            sync_msg = q_sync.get()
+                            for name, frame in sync_msg:
+                                ts = int(frame.getTimestampDevice().total_seconds() * 1e9)
+                                data = frame.getData()
+                                if name == "depth":
+                                    data = lz4f.compress(data)
+                                self._recorder.write_frame(name, data, ts)
+                        except Exception:
+                            if not imu_packets:
+                                time.sleep(0.005)
+                                continue
 
                         # Periodic fsync to survive hard power cuts
                         now = time.monotonic()

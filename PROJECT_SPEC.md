@@ -24,7 +24,7 @@ Build a high-quality egocentric data capture device for training robots. The sys
 ### Data Capture
 - RGB camera: H.265 @ 480p, 30fps
 - Depth: StereoDepth on-device, aligned to RGB (raw16, LZ4-compressed)
-- IMU: 200Hz accelerometer + gyroscope
+- IMU: 100Hz accelerometer + gyroscope
 - IR projector: Enabled at 50% intensity
 - RGB + depth synchronized via device Sync node (aligned on-device)
 
