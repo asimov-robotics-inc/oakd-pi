@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0] - 2026-01-30
+
+### Added
+- `bundle.sh` - creates portable `oakd-capture-bundle.tar.gz` from a configured Pi (pre-built .venv + source + systemd + embedded install.sh)
+- `deploy.sh` - SSH-based deployment from dev machine: full first-deploy (`./deploy.sh <host>`) and fast source-only update (`./deploy.sh <host> --update`)
+
+### Changed
+- Rewrote README with comprehensive deployment guide, connectivity options (Ethernet, Wi-Fi, USB gadget), service management, and recording retrieval
+- Updated pi_setup.md to note bundle deploy as preferred alternative for multi-Pi setups
+
 ## [0.4.4] - 2026-01-30
 
 ### Changed

@@ -1,13 +1,16 @@
 # Raspberry Pi 5 Setup Guide
 
-This guide walks through setting up the OAK-D capture system on a Raspberry Pi 5
-with a monitor, keyboard, and mouse connected directly. It assumes you've already
-flashed the OS and cloned the repo.
+Manual setup for a single Pi with a monitor and keyboard attached. This installs
+all build tools (git, uv, python3-dev) and compiles dependencies from source.
+
+> **Deploying multiple Pis?** Use `bundle.sh` + `deploy.sh` instead — it's faster
+> and doesn't require git or uv on the target. See the [README](../README.md#deploying-to-pis).
 
 ## Prerequisites
 
-- Raspberry Pi 5 with Raspberry Pi OS booted and working
+- Raspberry Pi 5 with Raspberry Pi OS Bookworm booted and working
 - Monitor + keyboard + mouse connected to the Pi
+- Internet connection (Wi-Fi or Ethernet)
 - This repo already cloned to `~/oakd-pi`
 - OAK-D Pro + USB-C data cable
 
