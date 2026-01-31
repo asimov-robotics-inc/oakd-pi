@@ -28,6 +28,9 @@ IMU_HZ = 200  # IMU sample rate
 IR_INTENSITY = 0.5
 QUEUE_TIMEOUT_S = 0.5
 MIN_FREE_GB = 2.0
+SEGMENT_MINUTES = 10
+DISK_CHECK_INTERVAL_S = 60.0
+DEVICE_RETRY_INTERVAL_S = 5.0
 
 # Video encoding settings (H.265 on camera)
 RESOLUTION = (1280, 720)  # 720p for all cameras
@@ -61,7 +64,7 @@ class McapRecorder:
         self._writer.start()
 
         # Register channels (raw bytes, no schema)
-        for topic_name in ("rgb", "depth", "imu"):
+        for topic_name in ("rgb", "left", "right", "imu"):
             self._channels[topic_name] = self._writer.register_channel(
                 topic=f"/oak/{topic_name}",
                 message_encoding="",
@@ -76,7 +79,6 @@ class McapRecorder:
                 "fps": str(CAMERA_FPS),
                 "video_encoding": "h265",
                 "imu_hz": str(IMU_HZ),
-                "depth_encoding": "raw16_mm",
                 "sync_threshold_ms": str(SYNC_THRESHOLD_MS),
             },
         )
@@ -127,6 +129,7 @@ class McapRecorder:
     def close(self):
         """Close the MCAP file."""
         if self._writer:
+            self.flush()
             self._writer.finish()
             self._writer = None
         if self._file:
@@ -147,6 +150,8 @@ class CaptureApp:
         self._last_recording_ts: Optional[str] = None
         self._last_recording_dir: Optional[Path] = None
         self._last_queue_warn = {}
+        self._segment_start_monotonic: Optional[float] = None
+        self._last_disk_check = 0.0
 
         # Register signal handlers
         signal.signal(signal.SIGTERM, self._handle_shutdown)
@@ -171,6 +176,7 @@ class CaptureApp:
             calib = device.readCalibration()
             calib_path = recording_dir / f"calibration_{timestamp}.json"
             calib.eepromToJsonFile(str(calib_path))
+            self._fsync_path(calib_path)
             log.info(f"Saved calibration to {calib_path}")
         except Exception as e:
             log.warning(f"Failed to save calibration: {e}")
@@ -190,30 +196,60 @@ class CaptureApp:
                     "ir_intensity": IR_INTENSITY,
                     "video_encoding": "h265",
                     "h265_bitrate": H265_BITRATE,
-                    "depth": {
-                        "aligned_to": "rgb",
-                        "rectification": True,
-                        "left_right_check": True,
-                        "depth_encoding": "raw16_mm",
+                    "stereo": {
+                        "left_right_check": False,
+                        "rectification": False,
+                        "encoding": "h265",
                     },
                 },
             }
             metadata_path = recording_dir / f"metadata_{timestamp}.json"
             with open(metadata_path, "w") as f:
                 json.dump(metadata, f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            self._fsync_dir(recording_dir)
             log.info(f"Saved metadata to {metadata_path}")
         except Exception as e:
             log.warning(f"Failed to save metadata: {e}")
 
-    def _start_recording(self) -> None:
-        """Start a new recording."""
+    def _fsync_dir(self, path: Path) -> None:
+        """Force directory entry to disk so files survive hard power cuts."""
+        try:
+            fd = os.open(path, os.O_DIRECTORY)
+            try:
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+        except Exception as e:
+            log.warning(f"Failed to fsync dir {path}: {e}")
+
+    def _fsync_path(self, path: Path) -> None:
+        """Force file and its parent dir to disk."""
+        try:
+            with open(path, "rb") as f:
+                os.fsync(f.fileno())
+        except Exception as e:
+            log.warning(f"Failed to fsync file {path}: {e}")
+        self._fsync_dir(path.parent)
+
+    def _check_disk_space(self) -> bool:
+        """Return True if there's enough free space to record."""
         try:
             free_gb = shutil.disk_usage(RECORDINGS_DIR).free / (1024**3)
             if free_gb < MIN_FREE_GB:
-                log.warning(f"Low disk space ({free_gb:.2f} GB free); refusing to start recording")
-                return
+                log.warning(f"Low disk space ({free_gb:.2f} GB free)")
+                return False
+            return True
         except Exception as e:
             log.warning(f"Disk space check failed: {e}")
+            return True
+
+    def _start_recording(self) -> None:
+        """Start a new recording."""
+        if not self._check_disk_space():
+            log.warning("Refusing to start recording due to low disk space")
+            return
 
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         recording_dir = self._ensure_recordings_dir(timestamp)
@@ -231,10 +267,12 @@ class CaptureApp:
 
         log.info(f"Recording started: {mcap_path}")
         self._state = State.RECORDING
+        self._segment_start_monotonic = time.monotonic()
 
     def _stop_recording(self) -> None:
         """Stop current recording."""
         self._state = State.READY
+        self._segment_start_monotonic = None
 
         if self._recorder:
             self._recorder.close()
@@ -265,62 +303,77 @@ class CaptureApp:
 
     def run(self) -> None:
         """Main application loop."""
-        device = None
-
-        try:
-            log.info("Initializing camera...")
-
-            # Connect to device first to enable IR
-            device = dai.Device()
-            device_id = device.getMxId()  # Get ID before pipeline starts
-            self._device_id = device_id
-            self._device = device
-
-            # Enable IR projector
+        while self._running:
+            device = None
             try:
-                device.setIrLaserDotProjectorIntensity(IR_INTENSITY)
-                device.setIrFloodLightIntensity(0.0)
-                log.info(f"IR projector enabled at {IR_INTENSITY * 100}%")
-            except Exception as e:
-                log.warning(f"IR projector not available: {e}")
+                log.info("Initializing camera...")
 
-            # Create pipeline with device context (v3 API)
-            with dai.Pipeline(device) as pipeline:
-                # RGB camera
-                cam_rgb = pipeline.create(dai.node.Camera).build(
-                    boardSocket=dai.CameraBoardSocket.CAM_A,
-                    sensorFps=CAMERA_FPS,
-                )
+                # Connect to device first to enable IR
+                device = dai.Device()
+                device_id = device.getMxId()  # Get ID before pipeline starts
+                self._device_id = device_id
+                self._device = device
 
-                # Mono cameras for stereo (hardware synced via FSYNC)
-                cam_left = pipeline.create(dai.node.Camera).build(
-                    boardSocket=dai.CameraBoardSocket.CAM_B,
-                    sensorFps=CAMERA_FPS,
-                )
+                # Enable IR projector
+                try:
+                    device.setIrLaserDotProjectorIntensity(IR_INTENSITY)
+                    device.setIrFloodLightIntensity(0.0)
+                    log.info(f"IR projector enabled at {IR_INTENSITY * 100}%")
+                except Exception as e:
+                    log.warning(f"IR projector not available: {e}")
 
-                cam_right = pipeline.create(dai.node.Camera).build(
-                    boardSocket=dai.CameraBoardSocket.CAM_C,
-                    sensorFps=CAMERA_FPS,
-                )
+                # Create pipeline with device context (v3 API)
+                with dai.Pipeline(device) as pipeline:
+                    # RGB camera
+                    cam_rgb = pipeline.create(dai.node.Camera).build(
+                        boardSocket=dai.CameraBoardSocket.CAM_A,
+                        sensorFps=CAMERA_FPS,
+                    )
+
+                    # Mono cameras for stereo (hardware synced via FSYNC)
+                    cam_left = pipeline.create(dai.node.Camera).build(
+                        boardSocket=dai.CameraBoardSocket.CAM_B,
+                        sensorFps=CAMERA_FPS,
+                    )
+
+                    cam_right = pipeline.create(dai.node.Camera).build(
+                        boardSocket=dai.CameraBoardSocket.CAM_C,
+                        sensorFps=CAMERA_FPS,
+                    )
 
                 # Get camera outputs (encoder-friendly formats)
                 rgb_out = cam_rgb.requestOutput(RESOLUTION, type=dai.ImgFrame.Type.NV12)
                 left_out = cam_left.requestOutput(RESOLUTION, type=dai.ImgFrame.Type.GRAY8)
                 right_out = cam_right.requestOutput(RESOLUTION, type=dai.ImgFrame.Type.GRAY8)
 
-                # StereoDepth (on-device depth/disparity from mono pair)
-                stereo = pipeline.create(dai.node.StereoDepth)
-                left_out.link(stereo.left)
-                right_out.link(stereo.right)
-                stereo.setRectification(True)
-                stereo.setLeftRightCheck(True)
-                stereo.setDepthAlign(dai.CameraBoardSocket.CAM_A)
+                # Convert mono frames to NV12 for H.265 encoder
+                manip_left = pipeline.create(dai.node.ImageManip)
+                manip_left.initialConfig.setResize(RESOLUTION[0], RESOLUTION[1])
+                manip_left.initialConfig.setFrameType(dai.ImgFrame.Type.NV12)
+                manip_left.setMaxOutputFrameSize(int(RESOLUTION[0] * RESOLUTION[1] * 3 / 2))
+                left_out.link(manip_left.inputImage)
 
-                # H.265 video encoder (encode on camera, not Pi)
+                manip_right = pipeline.create(dai.node.ImageManip)
+                manip_right.initialConfig.setResize(RESOLUTION[0], RESOLUTION[1])
+                manip_right.initialConfig.setFrameType(dai.ImgFrame.Type.NV12)
+                manip_right.setMaxOutputFrameSize(int(RESOLUTION[0] * RESOLUTION[1] * 3 / 2))
+                right_out.link(manip_right.inputImage)
+
+                    # H.265 video encoder (encode on camera, not Pi)
                 enc_rgb = pipeline.create(dai.node.VideoEncoder)
                 enc_rgb.setDefaultProfilePreset(CAMERA_FPS, dai.VideoEncoderProperties.Profile.H265_MAIN)
                 enc_rgb.setBitrate(H265_BITRATE)
                 rgb_out.link(enc_rgb.input)
+
+                enc_left = pipeline.create(dai.node.VideoEncoder)
+                enc_left.setDefaultProfilePreset(CAMERA_FPS, dai.VideoEncoderProperties.Profile.H265_MAIN)
+                enc_left.setBitrate(H265_BITRATE)
+                manip_left.out.link(enc_left.input)
+
+                enc_right = pipeline.create(dai.node.VideoEncoder)
+                enc_right.setDefaultProfilePreset(CAMERA_FPS, dai.VideoEncoderProperties.Profile.H265_MAIN)
+                enc_right.setBitrate(H265_BITRATE)
+                manip_right.out.link(enc_right.input)
 
                 # Sync node - synchronizes camera streams by timestamp
                 sync = pipeline.create(dai.node.Sync)
@@ -328,71 +381,99 @@ class CaptureApp:
 
                 # Link encoded outputs to sync inputs
                 enc_rgb.out.link(sync.inputs["rgb"])
-                stereo.depth.link(sync.inputs["depth"])
+                enc_left.out.link(sync.inputs["left"])
+                enc_right.out.link(sync.inputs["right"])
 
-                # IMU (separate - runs at higher rate)
-                imu = pipeline.create(dai.node.IMU)
-                imu.enableIMUSensor(dai.IMUSensor.ACCELEROMETER_RAW, IMU_HZ)
-                imu.enableIMUSensor(dai.IMUSensor.GYROSCOPE_RAW, IMU_HZ)
-                imu.setBatchReportThreshold(1)
-                imu.setMaxBatchReports(10)
+                    # IMU (separate - runs at higher rate)
+                    imu = pipeline.create(dai.node.IMU)
+                    imu.enableIMUSensor(dai.IMUSensor.ACCELEROMETER_RAW, IMU_HZ)
+                    imu.enableIMUSensor(dai.IMUSensor.GYROSCOPE_RAW, IMU_HZ)
+                    imu.setBatchReportThreshold(1)
+                    imu.setMaxBatchReports(10)
 
-                # Output queues - synchronized camera group + separate IMU
-                q_sync = sync.out.createOutputQueue(maxSize=2, blocking=True)
-                q_imu = imu.out.createOutputQueue(maxSize=100, blocking=False)
+                    # Output queues - synchronized camera group + separate IMU
+                    q_sync = sync.out.createOutputQueue(maxSize=2, blocking=True)
+                    q_imu = imu.out.createOutputQueue(maxSize=100, blocking=False)
 
-                log.info(
-                    f"Pipeline: {RESOLUTION[0]}x{RESOLUTION[1]} @ {CAMERA_FPS}fps, "
-                    f"H.265 @ {H265_BITRATE//1_000_000}Mbps, depth aligned, sync threshold {SYNC_THRESHOLD_MS}ms"
+                    log.info(
+                        f"Pipeline: {RESOLUTION[0]}x{RESOLUTION[1]} @ {CAMERA_FPS}fps, "
+                    f"H.265 @ {H265_BITRATE//1_000_000}Mbps, stereo L/R + RGB, sync threshold {SYNC_THRESHOLD_MS}ms"
                 )
 
-                # Start pipeline
-                pipeline.start()
+                    # Start pipeline
+                    pipeline.start()
 
-                # Ensure base recordings directory exists
-                RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
+                    # Ensure base recordings directory exists
+                    RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 
-                # Ready - immediately start recording
-                self._state = State.READY
-                log.info("Device ready, starting recording automatically")
-                self._start_recording()
+                    # Ready - immediately start recording
+                    self._state = State.READY
+                    log.info("Device ready, starting recording automatically")
+                    self._start_recording()
 
-                # Main loop - record continuously until shutdown
-                last_fsync = time.monotonic()
-                while self._running and pipeline.isRunning():
-                    if self._state != State.RECORDING or not self._recorder:
-                        time.sleep(0.05)
-                        continue
+                    # Main loop - record continuously until shutdown
+                    last_fsync = time.monotonic()
+                    while self._running and pipeline.isRunning():
+                        if self._state != State.RECORDING or not self._recorder:
+                            time.sleep(0.05)
+                            continue
 
-                    # Get synchronized camera frames (all aligned by timestamp)
-                    sync_msg = self._get_with_timeout(q_sync, QUEUE_TIMEOUT_S, "sync")
-                    imu_packets = q_imu.tryGetAll()
+                        # Get synchronized camera frames (all aligned by timestamp)
+                        sync_msg = self._get_with_timeout(q_sync, QUEUE_TIMEOUT_S, "sync")
+                        imu_packets = q_imu.tryGetAll()
 
-                    if sync_msg:
-                        for name, frame in sync_msg:
-                            ts_ns = int(frame.getTimestampDevice().total_seconds() * 1e9)
-                            self._recorder.write_frame(name, frame.getData(), ts_ns)
+                        if sync_msg:
+                            for name, frame in sync_msg:
+                                ts_ns = int(frame.getTimestampDevice().total_seconds() * 1e9)
+                                self._recorder.write_frame(name, frame.getData(), ts_ns)
 
-                    if imu_packets:
-                        for imu_data in imu_packets:
-                            self._recorder.write_imu(imu_data)
+                        if imu_packets:
+                            for imu_data in imu_packets:
+                                self._recorder.write_imu(imu_data)
 
-                    # Periodic fsync to survive hard power cuts
-                    now = time.monotonic()
-                    if now - last_fsync >= FSYNC_INTERVAL_S:
-                        self._recorder.flush()
-                        last_fsync = now
+                        # Periodic fsync to survive hard power cuts
+                        now = time.monotonic()
+                        if now - last_fsync >= FSYNC_INTERVAL_S:
+                            self._recorder.flush()
+                            last_fsync = now
 
-        except Exception as e:
-            log.exception(f"Application error: {e}")
+                        # Periodic disk space check
+                        if now - self._last_disk_check >= DISK_CHECK_INTERVAL_S:
+                            self._last_disk_check = now
+                            if not self._check_disk_space():
+                                log.warning("Stopping recording due to low disk space")
+                                self._stop_recording()
+                                continue
 
-        finally:
-            log.info("Cleaning up...")
-            # Stop recording if active
-            if self._recorder:
-                self._recorder.close()
-                self._recorder = None
-            log.info("Cleanup complete")
+                        # Rotate recording for resilience
+                        if (
+                            self._segment_start_monotonic is not None
+                            and now - self._segment_start_monotonic >= SEGMENT_MINUTES * 60
+                        ):
+                            log.info("Rotating recording segment")
+                            self._stop_recording()
+                            self._start_recording()
+
+            except Exception as e:
+                log.exception(f"Application error: {e}")
+
+            finally:
+                log.info("Cleaning up...")
+                # Stop recording if active
+                if self._recorder:
+                    self._recorder.close()
+                    self._recorder = None
+                self._segment_start_monotonic = None
+                if device is not None:
+                    try:
+                        device.close()
+                    except Exception:
+                        pass
+                log.info("Cleanup complete")
+
+            if self._running:
+                log.info(f"Retrying device init in {DEVICE_RETRY_INTERVAL_S:.1f}s...")
+                time.sleep(DEVICE_RETRY_INTERVAL_S)
 
 
 def main() -> None:

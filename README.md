@@ -1,13 +1,14 @@
 # OAK-D Egocentric Capture
 
-Headless data capture system for robotics training. Raspberry Pi 5 + OAK-D Pro records synchronized RGB, depth, and IMU streams to MCAP format. Starts recording on boot, no screen or keyboard needed.
+Headless data capture system for robotics training. Raspberry Pi 5 + OAK-D Pro records synchronized RGB, stereo left/right, and IMU streams to MCAP format. Depth is intended to be computed offline from the stereo pair. Starts recording on boot, no screen or keyboard needed. If the camera isn't available at boot, the app keeps retrying until it is.
 
 ## What it captures
 
 | Stream | Details |
 |--------|---------|
 | RGB | 720p @ 30fps, H.265 encoded on-camera (10 Mbps) |
-| Depth | StereoDepth computed on-device, aligned to RGB |
+| Stereo Left | 720p @ 30fps, H.265 encoded on-camera (10 Mbps) |
+| Stereo Right | 720p @ 30fps, H.265 encoded on-camera (10 Mbps) |
 | IMU | 200Hz accelerometer + gyroscope |
 | IR | Dot projector at 50% for improved depth |
 
@@ -22,63 +23,7 @@ All streams are software-synchronized via DepthAI Sync node (<10ms threshold). T
 
 ## Deploying to Pis
 
-There are two ways to get a Pi running. The **bundle method** is recommended for deploying multiple Pis — it's faster, works offline (mostly), and doesn't require git or uv on the target.
-
-### Option A: Bundle deploy (recommended)
-
-This separates "build once" from "deploy many." You create a portable tarball on one configured Pi, then push it to any number of fresh Pis from your dev machine.
-
-#### 1. Build the bundle (on a configured Pi)
-
-If you already have one Pi set up the old way (via `setup.sh`), create the bundle:
-
-```bash
-cd ~/oakd-pi
-./bundle.sh
-# produces oakd-capture-bundle.tar.gz (~60-80MB)
-```
-
-#### 2. Copy the bundle to your dev machine
-
-```bash
-scp pi@reference-pi.local:~/oakd-pi/oakd-capture-bundle.tar.gz .
-```
-
-#### 3. Deploy to a fresh Pi
-
-The target Pi needs:
-- Raspberry Pi OS Bookworm (stock, no extra setup)
-- SSH enabled (turn on during Raspberry Pi Imager flashing, or via `raspi-config`)
-- SSH key auth configured from your dev machine
-- Network connectivity (Ethernet, Wi-Fi, or USB gadget — see [Connectivity](#connectivity) below)
-
-```bash
-# Full first-time deploy — uploads bundle, installs deps, starts service
-./deploy.sh pi-01.local
-
-# Deploy to more Pis
-./deploy.sh pi-02.local
-./deploy.sh pi-03.local
-```
-
-#### 4. Push code updates
-
-After making source code changes, push them to deployed Pis without re-uploading the full bundle:
-
-```bash
-# Syncs only src/ (~24KB), restarts service — takes seconds
-./deploy.sh pi-01.local --update
-./deploy.sh pi-02.local --update
-```
-
-#### Environment variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `OAKD_USER` | `pi` | SSH user on the target Pi |
-| `BUNDLE` | `./oakd-capture-bundle.tar.gz` | Path to the bundle tarball |
-
-### Option B: Manual setup (single Pi)
+There is one recommended way to get a Pi running: manual setup.
 
 If you're setting up just one Pi with a monitor and keyboard attached:
 
@@ -157,17 +102,18 @@ Or if you're on the Pi directly, use the helper scripts:
 
 ## Recordings
 
-Saved to `~/recordings/YYYYMMDD_HHMMSS/` on the Pi (timestamps are UTC):
+Saved to `~/recordings/YYYYMMDD_HHMMSS/` on the Pi (timestamps are UTC). The system
+rotates to a new recording every 10 minutes for reliability.
 
 ```
 ~/recordings/
 └── 20260130_143052/
-    ├── recording_20260130_143052.mcap    # RGB + depth + IMU
+    ├── recording_20260130_143052.mcap    # RGB + stereo L/R + IMU
     ├── calibration_20260130_143052.json  # camera intrinsics/extrinsics
     └── metadata_20260130_143052.json     # recording config + device info
 ```
 
-MCAP payloads are raw binary — H.265 video frames and 48-byte packed IMU structs (6 little-endian doubles: ax, ay, az, gx, gy, gz). The recording is fsynced to disk every 5 seconds to limit data loss on hard power cuts.
+MCAP payloads are raw binary — H.265 video frames (RGB + left + right) and 48-byte packed IMU structs (6 little-endian doubles: ax, ay, az, gx, gy, gz). The recording is fsynced to disk every 5 seconds to limit data loss on hard power cuts.
 
 ### Copying recordings off the Pi
 
@@ -197,8 +143,6 @@ oakd-pi/
 ├── .python-version             # Python version pin (3.11)
 ├── setup.sh                    # Manual single-Pi setup
 ├── run.sh / stop.sh            # systemd service helpers
-├── bundle.sh                   # Create deployable tarball
-├── deploy.sh                   # Deploy to Pis over SSH
 ├── src/oakd_capture/
 │   ├── __init__.py
 │   ├── __main__.py             # Entry point

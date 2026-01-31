@@ -9,9 +9,8 @@ User=pi
 WorkingDirectory=/home/pi/oakd-pi
 ExecStart=/home/pi/oakd-pi/.venv/bin/python -m oakd_capture
 Restart=always
-RestartSec=2
-StartLimitIntervalSec=60
-StartLimitBurst=10
+RestartSec=5
+StartLimitIntervalSec=0
 StandardOutput=journal
 StandardError=journal
 

@@ -3,8 +3,7 @@
 Manual setup for a single Pi with a monitor and keyboard attached. This installs
 all build tools (git, uv, python3-dev) and compiles dependencies from source.
 
-> **Deploying multiple Pis?** Use `bundle.sh` + `deploy.sh` instead — it's faster
-> and doesn't require git or uv on the target. See the [README](../README.md#deploying-to-pis).
+This guide covers the manual setup flow for a Pi with a monitor and keyboard.
 
 ## Prerequisites
 
@@ -75,10 +74,27 @@ sudo systemctl status oakd-capture
 journalctl -u oakd-capture -f
 ```
 
+## 4.1 Updating the Pi
+
+If you pull new code changes on the Pi, stop the service first, then update, then restart.
+
+```bash
+cd ~/oakd-pi
+./stop.sh
+git pull
+./run.sh
+```
+
+If you only changed Python dependencies, re-sync them before restarting:
+
+```bash
+uv sync
+```
+
 ## 5. Retrieve Recordings
 
 Recordings are saved to `~/recordings/` on the Pi. Each session gets its own
-timestamped folder.
+timestamped folder, and the system rotates to a new recording every 10 minutes.
 
 ```bash
 # list recording sessions
@@ -86,7 +102,7 @@ ls -la ~/recordings/
 ```
 
 Each folder contains:
-- `recording_YYYYMMDD_HHMMSS.mcap` - sensor data (RGB + depth + IMU)
+- `recording_YYYYMMDD_HHMMSS.mcap` - sensor data (RGB + stereo L/R + IMU)
 - `calibration_YYYYMMDD_HHMMSS.json` - camera intrinsics/extrinsics
 - `metadata_YYYYMMDD_HHMMSS.json` - recording config + device info
 
@@ -128,6 +144,16 @@ ssh pi@pi.local
 
 Use the blue USB 3.0 ports, not USB 2.0. The current config uses:
 - RGB: 1280x720
-- Depth: aligned to RGB
+- Stereo: left + right at 1280x720
 
 If errors persist, try a powered USB hub or reduce FPS/resolution.
+
+### Camera not ready at boot
+
+The app keeps retrying device initialization every few seconds. If the camera is
+unplugged or slow to enumerate, it should begin recording as soon as it appears.
+Check logs with:
+
+```bash
+journalctl -u oakd-capture -f
+```

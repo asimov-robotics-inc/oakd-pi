@@ -1,4 +1,4 @@
-"""MCAP recording viewer — streams RGB, depth colormap, and IMU traces."""
+"""MCAP recording viewer — streams RGB, stereo left/right, and IMU traces."""
 
 import argparse
 import struct
@@ -16,7 +16,7 @@ from mcap.reader import make_reader
 # Layout constants
 VIDEO_W, VIDEO_H = 1280, 720
 IMU_PLOT_H = 240
-CANVAS_W = VIDEO_W * 2
+CANVAS_W = VIDEO_W * 3
 
 # IMU plot settings
 IMU_BUF_LEN = 400  # ~2s at 200Hz
@@ -24,9 +24,6 @@ ACCEL_RANGE = 20.0  # m/s^2
 GYRO_RANGE = 10.0   # rad/s
 ACCEL_COLORS = [(0, 0, 255), (0, 200, 0), (255, 100, 0)]   # R,G,B for x,y,z
 GYRO_COLORS = [(180, 0, 255), (0, 220, 220), (255, 180, 0)]
-
-DEPTH_MAX_MM = 10_000  # clip depth at 10m
-
 
 def make_h265_decoder():
     """Create a PyAV H.265 codec context for decoding raw NAL units."""
@@ -43,14 +40,6 @@ def decode_h265(decoder, data: bytes) -> np.ndarray | None:
     for frame in frames:
         return frame.to_ndarray(format="bgr24")
     return None
-
-
-def depth_to_color(data: bytes) -> np.ndarray:
-    """Convert raw uint16 depth buffer to a TURBO colormap image."""
-    arr = np.frombuffer(data, dtype=np.uint16).reshape(VIDEO_H, VIDEO_W)
-    clipped = np.clip(arr, 0, DEPTH_MAX_MM).astype(np.float32)
-    norm = (clipped * (255.0 / DEPTH_MAX_MM)).astype(np.uint8)
-    return cv2.applyColorMap(norm, cv2.COLORMAP_TURBO)
 
 
 def unpack_imu(data: bytes):
@@ -118,7 +107,7 @@ def stream_mcap(path: str):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Play back an MCAP recording with RGB, depth, and IMU.")
+    parser = argparse.ArgumentParser(description="Play back an MCAP recording with RGB, stereo L/R, and IMU.")
     parser.add_argument("mcap", help="Path to the .mcap file")
     args = parser.parse_args()
 
@@ -138,7 +127,8 @@ def main():
     # Placeholder images
     black_frame = np.zeros((VIDEO_H, VIDEO_W, 3), dtype=np.uint8)
     last_rgb = black_frame.copy()
-    last_depth_color = black_frame.copy()
+    last_left = black_frame.copy()
+    last_right = black_frame.copy()
 
     paused = False
     t0_msg = None   # first RGB message timestamp (ns)
@@ -149,7 +139,8 @@ def main():
     cv2.namedWindow("MCAP Viewer", cv2.WINDOW_NORMAL)
 
     # Pending messages buffered while we wait for the next RGB frame to render
-    pending_depth = []
+    pending_left = []
+    pending_right = []
     pending_imu = []
 
     for topic, ts_ns, data in stream_mcap(str(mcap_path)):
@@ -158,8 +149,12 @@ def main():
             pending_imu.append(vals)
             continue
 
-        if topic == "/oak/depth":
-            pending_depth.append(bytes(data))
+        if topic == "/oak/left":
+            pending_left.append(bytes(data))
+            continue
+
+        if topic == "/oak/right":
+            pending_right.append(bytes(data))
             continue
 
         if topic != "/oak/rgb":
@@ -167,13 +162,18 @@ def main():
 
         # --- Got an RGB frame: render everything accumulated so far ---
 
-        # Process pending depth (keep latest)
-        for d_data in pending_depth:
-            try:
-                last_depth_color = depth_to_color(d_data)
-            except ValueError:
-                pass
-        pending_depth.clear()
+        # Process pending left/right (keep latest)
+        for l_data in pending_left:
+            bgr = decode_h265(decoder, bytes(l_data))
+            if bgr is not None:
+                last_left = bgr
+        pending_left.clear()
+
+        for r_data in pending_right:
+            bgr = decode_h265(decoder, bytes(r_data))
+            if bgr is not None:
+                last_right = bgr
+        pending_right.clear()
 
         # Process pending IMU
         for vals in pending_imu:
@@ -215,7 +215,7 @@ def main():
                     remaining -= wait
 
         # Compose display
-        top = np.hstack([last_rgb, last_depth_color])
+        top = np.hstack([last_rgb, last_left, last_right])
         bottom = draw_imu_plot(accel_buf, gyro_buf)
         frame = np.vstack([top, bottom])
         cv2.imshow("MCAP Viewer", frame)

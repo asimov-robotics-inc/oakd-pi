@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.1] - 2026-01-31
+
+### Added
+- Recording rotation every 10 minutes for better resilience to hard power cuts
+- Periodic disk space checks during recording
+- Durable fsync of metadata and calibration files
+- Device init retry loop to keep recording attempts alive until the camera is available
+
+### Changed
+- systemd now restarts indefinitely without start-limit throttling
+- Replaced on-device depth recording with stereo left/right H.265 streams (depth computed offline)
+
+### Removed
+- Bundle-based deployment scripts; manual setup is now the only supported path
+
 ## [0.5.0] - 2026-01-30
 
 ### Added
