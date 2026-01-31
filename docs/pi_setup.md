@@ -144,8 +144,8 @@ ssh pi@pi.local
 ### Camera bandwidth errors (X_LINK_ERROR)
 
 Use the blue USB 3.0 ports, not USB 2.0. The current config uses:
-- RGB: 1280x720
-- Stereo: left + right at 1280x720
+- RGB: 640x480
+- Stereo: left + right at 640x480
 
 If errors persist, try a powered USB hub or reduce FPS/resolution.
 

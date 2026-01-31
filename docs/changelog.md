@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
 - systemd now restarts indefinitely without start-limit throttling
 - Replaced on-device depth recording with stereo left/right H.265 streams (depth computed offline)
 - Removed host-side alignment; streams are aligned offline by sequence number or timestamps
+- Reduced capture resolution to 640x480 with 6 Mbps bitrate to improve FPS
 
 ### Removed
 - Bundle-based deployment scripts; manual setup is now the only supported path

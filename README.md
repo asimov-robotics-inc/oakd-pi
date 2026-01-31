@@ -6,9 +6,9 @@ Headless data capture system for robotics training. Raspberry Pi 5 + OAK-D Pro r
 
 | Stream | Details |
 |--------|---------|
-| RGB | 720p @ 30fps, H.265 encoded on-camera (10 Mbps) |
-| Stereo Left | 720p @ 30fps, H.265 encoded on-camera (10 Mbps) |
-| Stereo Right | 720p @ 30fps, H.265 encoded on-camera (10 Mbps) |
+| RGB | 480p @ 30fps, H.265 encoded on-camera (6 Mbps) |
+| Stereo Left | 480p @ 30fps, H.265 encoded on-camera (6 Mbps) |
+| Stereo Right | 480p @ 30fps, H.265 encoded on-camera (6 Mbps) |
 | IMU | 200Hz accelerometer + gyroscope |
 | IR | Dot projector at 50% for improved depth |
 

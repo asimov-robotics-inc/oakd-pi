@@ -22,8 +22,8 @@ Build a high-quality egocentric data capture device for training robots. The sys
 - Each recording gets its own timestamped folder
 
 ### Data Capture
-- RGB camera: H.265 @ 720p, 30fps
-- Stereo mono cameras: H.265 @ 720p, 30fps (left + right)
+- RGB camera: H.265 @ 480p, 30fps
+- Stereo mono cameras: H.265 @ 480p, 30fps (left + right)
 - IMU: 200Hz accelerometer + gyroscope
 - IR projector: Enabled at 50% intensity
 - RGB + stereo L/R recorded independently; align offline by sequence number or timestamps
