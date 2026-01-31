@@ -125,16 +125,6 @@ scp -r pi@host:~/recordings/20260130_143052 ~/Downloads/
 rsync -az pi@host:~/recordings/ ~/local-recordings/
 ```
 
-### Viewing recordings
-
-```bash
-# Install viewer dependencies (on any machine with a display)
-uv sync --extra viewer
-
-# Play back a recording
-uv run python tools/viewer.py ~/local-recordings/20260130_143052/recording_20260130_143052.mcap
-```
-
 ## Project structure
 
 ```
@@ -149,8 +139,6 @@ oakd-pi/
 │   └── main.py                 # Pipeline, recording, state machine
 ├── systemd/
 │   └── oakd-capture.service    # systemd unit file
-├── tools/
-│   └── viewer.py               # MCAP playback viewer
 └── docs/
     ├── pi_setup.md             # Manual setup guide
     ├── status.md               # Milestone tracking

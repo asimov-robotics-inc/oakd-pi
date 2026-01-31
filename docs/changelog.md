@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.
 
 ### Removed
 - Bundle-based deployment scripts; manual setup is now the only supported path
+- Removed local MCAP viewer tooling and dependencies
 
 ## [0.5.0] - 2026-01-30
 

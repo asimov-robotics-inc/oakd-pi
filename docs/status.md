@@ -11,7 +11,6 @@
 - **M6: no_ux branch** - Remove button/buzzer hardware, auto-record on startup
 - **M7: Setup scripts & doc cleanup** - Add setup.sh/run.sh/stop.sh, strip button/buzzer from all docs
 
-- **M8: MCAP Viewer** - Standalone playback tool with RGB, stereo L/R, and IMU plots
 - **M9: Crash-Safe Recording** - Periodic fsync + early metadata write to survive hard power cuts
 - **M10: Boot Speed & Robustness** - Faster systemd startup, direct venv exec, tighter shutdown timeout
 
