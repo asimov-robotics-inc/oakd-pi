@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
 - systemd now restarts indefinitely without start-limit throttling
 - Reverted to on-device depth aligned to RGB for synchronized RGBD capture
 - Reduced capture resolution to 640x480 with 6 Mbps RGB bitrate to improve FPS
+- Added light on-device depth filtering (median 3x3 + speckle + confidence threshold)
 - Restored IMU rate to 200Hz; batching remains increased to reduce overhead
 
 ### Removed

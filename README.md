@@ -122,6 +122,7 @@ Depth is already aligned to RGB on-device. For downstream use:
    - Decode H.265 frames for `rgb`.
 2) **Depth usage**
    - Decompress LZ4 depth frames to raw16 (aligned to RGB).
+   - Depth is lightly filtered on-device (median 3x3 + speckle + confidence threshold).
 3) **IMU alignment**
    - IMU samples are timestamped with the same device clock.
    - Align IMU to camera frames by nearest timestamp if needed.

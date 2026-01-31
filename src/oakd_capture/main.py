@@ -209,6 +209,10 @@ class CaptureApp:
                         "rectification": True,
                         "depth_encoding": "raw16_mm_lz4",
                         "depth_compression": "lz4frame",
+                        "median_filter": "3x3",
+                        "confidence_threshold": 200,
+                        "speckle_filter": True,
+                        "speckle_range": 50,
                     },
                 },
             }
@@ -359,6 +363,10 @@ class CaptureApp:
                     stereo.setLeftRightCheck(True)
                     stereo.setDepthAlign(dai.CameraBoardSocket.CAM_A)
                     stereo.setOutputSize(RESOLUTION[0], RESOLUTION[1])
+                    stereo.initialConfig.setMedianFilter(dai.MedianFilter.KERNEL_3x3)
+                    stereo.initialConfig.setConfidenceThreshold(200)
+                    stereo.initialConfig.setSpeckleFilter(True)
+                    stereo.initialConfig.setSpeckleRange(50)
 
                     # H.265 video encoder (encode on camera, not Pi)
                     enc_rgb = pipeline.create(dai.node.VideoEncoder)
