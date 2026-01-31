@@ -36,7 +36,7 @@ RESOLUTION = (1280, 720)  # 720p for all cameras
 H265_BITRATE = 10_000_000  # 10 Mbps - high quality for 720p
 
 # Synchronization settings
-SEQ_SYNC_MAX_BUFFER = 120  # Max buffered frames per stream for sequence matching
+SYNC_METHOD = "offline"
 FSYNC_INTERVAL_S = 5.0  # Flush MCAP to disk every N seconds
 
 
@@ -78,7 +78,8 @@ class McapRecorder:
                 "fps": str(CAMERA_FPS),
                 "video_encoding": "h265",
                 "imu_hz": str(IMU_HZ),
-                "sync_method": "sequence_number",
+                "sync_method": SYNC_METHOD,
+                "timestamp_source": "device",
             },
         )
         log.info(f"Opened MCAP: {self._filepath}")
@@ -148,10 +149,10 @@ class CaptureApp:
         self._recorder: Optional[McapRecorder] = None
         self._last_recording_ts: Optional[str] = None
         self._last_recording_dir: Optional[Path] = None
+        self._sync_index_file = None
         self._last_queue_warn = {}
         self._segment_start_monotonic: Optional[float] = None
         self._last_disk_check = 0.0
-        self._seq_warned = False
 
         # Register signal handlers
         signal.signal(signal.SIGTERM, self._handle_shutdown)
@@ -181,18 +182,24 @@ class CaptureApp:
         except Exception as e:
             log.warning(f"Failed to save calibration: {e}")
 
-    def _save_metadata(self, recording_dir: Path, timestamp: str, mcap_path: Path) -> None:
+    def _save_metadata(self, recording_dir: Path, timestamp: str, mcap_path: Path, sync_index_path: Path) -> None:
         """Save recording metadata."""
         try:
             metadata = {
                 "recording_start": timestamp,
                 "mcap_path": str(mcap_path),
+                "sync_index_path": str(sync_index_path),
                 "device_id": self._device_id,
                 "recording_config": {
                     "resolution": f"{RESOLUTION[0]}x{RESOLUTION[1]}",
                     "camera_fps": CAMERA_FPS,
                     "imu_hz": IMU_HZ,
-                    "sync_method": "sequence_number",
+                    "sync_method": SYNC_METHOD,
+                    "timestamp_source": "device",
+                    "sync_offline": {
+                        "align_by": ["sequence_number", "device_timestamp_ns"],
+                        "notes": "Streams are recorded independently; align offline using device timestamps or sequence numbers.",
+                    },
                     "ir_intensity": IR_INTENSITY,
                     "video_encoding": "h265",
                     "h265_bitrate": H265_BITRATE,
@@ -254,6 +261,7 @@ class CaptureApp:
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         recording_dir = self._ensure_recordings_dir(timestamp)
         mcap_path = recording_dir / f"recording_{timestamp}.mcap"
+        sync_index_path = recording_dir / f"sync_index_{timestamp}.csv"
         self._last_recording_ts = timestamp
         self._last_recording_dir = recording_dir
 
@@ -263,28 +271,39 @@ class CaptureApp:
             self._save_calibration(self._device, recording_dir, timestamp)
 
         # Write metadata immediately so it exists even after a hard power cut
-        self._save_metadata(recording_dir, timestamp, mcap_path)
+        self._save_metadata(recording_dir, timestamp, mcap_path, sync_index_path)
+
+        # Open sync index sidecar for offline alignment
+        try:
+            self._sync_index_file = open(sync_index_path, "w")
+            self._sync_index_file.write("stream,seq,timestamp_ns\n")
+            self._sync_index_file.flush()
+            os.fsync(self._sync_index_file.fileno())
+            self._fsync_dir(recording_dir)
+        except Exception as e:
+            self._sync_index_file = None
+            log.warning(f"Failed to open sync index file: {e}")
 
         log.info(f"Recording started: {mcap_path}")
         self._state = State.RECORDING
         self._segment_start_monotonic = time.monotonic()
-        self._rgb_buf = {}
-        self._left_buf = {}
-        self._right_buf = {}
-        self._seq_warned = False
 
     def _stop_recording(self) -> None:
         """Stop current recording."""
         self._state = State.READY
         self._segment_start_monotonic = None
-        self._rgb_buf = {}
-        self._left_buf = {}
-        self._right_buf = {}
-        self._seq_warned = False
 
         if self._recorder:
             self._recorder.close()
             self._recorder = None
+        if self._sync_index_file:
+            try:
+                self._sync_index_file.flush()
+                os.fsync(self._sync_index_file.fileno())
+            except Exception:
+                pass
+            self._sync_index_file.close()
+            self._sync_index_file = None
 
         log.info("Recording stopped")
 
@@ -304,6 +323,16 @@ class CaptureApp:
                 log.warning(f"No data from {name} queue for >5s")
                 self._last_queue_warn[name] = now
         return items
+
+    def _write_sync_index(self, stream: str, seq: int, timestamp_ns: int) -> None:
+        """Write a row to the sync index sidecar if enabled."""
+        if not self._sync_index_file:
+            return
+        try:
+            self._sync_index_file.write(f"{stream},{seq},{timestamp_ns}\n")
+        except Exception as e:
+            log.warning(f"Failed to write sync index: {e}")
+            self._sync_index_file = None
 
     def run(self) -> None:
         """Main application loop."""
@@ -395,7 +424,7 @@ class CaptureApp:
                     log.info(
                         f"Pipeline: {RESOLUTION[0]}x{RESOLUTION[1]} @ {CAMERA_FPS}fps, "
                         f"H.265 @ {H265_BITRATE//1_000_000}Mbps, stereo L/R + RGB, "
-                        f"sync by sequence number"
+                        f"offline sync"
                     )
 
                     # Start pipeline
@@ -430,43 +459,28 @@ class CaptureApp:
                             continue
 
                         for pkt in rgb_packets:
-                            self._rgb_buf[pkt.getSequenceNum()] = pkt
+                            ts = int(pkt.getTimestampDevice().total_seconds() * 1e9)
+                            self._recorder.write_frame("rgb", pkt.getData(), ts)
+                            self._write_sync_index("rgb", pkt.getSequenceNum(), ts)
                         for pkt in left_packets:
-                            self._left_buf[pkt.getSequenceNum()] = pkt
+                            ts = int(pkt.getTimestampDevice().total_seconds() * 1e9)
+                            self._recorder.write_frame("left", pkt.getData(), ts)
+                            self._write_sync_index("left", pkt.getSequenceNum(), ts)
                         for pkt in right_packets:
-                            self._right_buf[pkt.getSequenceNum()] = pkt
-
-                        # Trim buffers to prevent unbounded growth
-                        for buf in (self._rgb_buf, self._left_buf, self._right_buf):
-                            if len(buf) > SEQ_SYNC_MAX_BUFFER:
-                                oldest_seq = min(buf.keys())
-                                buf.pop(oldest_seq, None)
-                                if not self._seq_warned:
-                                    log.warning("Sequence sync buffer overflow; dropping oldest frames")
-                                    self._seq_warned = True
-
-                        # Write any complete triplets by sequence number
-                        while True:
-                            common = set(self._rgb_buf) & set(self._left_buf) & set(self._right_buf)
-                            if not common:
-                                break
-                            seq = min(common)
-                            rgb_pkt = self._rgb_buf.pop(seq)
-                            left_pkt = self._left_buf.pop(seq)
-                            right_pkt = self._right_buf.pop(seq)
-
-                            ts_rgb = int(rgb_pkt.getTimestampDevice().total_seconds() * 1e9)
-                            ts_left = int(left_pkt.getTimestampDevice().total_seconds() * 1e9)
-                            ts_right = int(right_pkt.getTimestampDevice().total_seconds() * 1e9)
-
-                            self._recorder.write_frame("rgb", rgb_pkt.getData(), ts_rgb)
-                            self._recorder.write_frame("left", left_pkt.getData(), ts_left)
-                            self._recorder.write_frame("right", right_pkt.getData(), ts_right)
+                            ts = int(pkt.getTimestampDevice().total_seconds() * 1e9)
+                            self._recorder.write_frame("right", pkt.getData(), ts)
+                            self._write_sync_index("right", pkt.getSequenceNum(), ts)
 
                         # Periodic fsync to survive hard power cuts
                         now = time.monotonic()
                         if now - last_fsync >= FSYNC_INTERVAL_S:
                             self._recorder.flush()
+                            if self._sync_index_file:
+                                try:
+                                    self._sync_index_file.flush()
+                                    os.fsync(self._sync_index_file.fileno())
+                                except Exception:
+                                    pass
                             last_fsync = now
 
                         # Periodic disk space check
@@ -495,6 +509,14 @@ class CaptureApp:
                 if self._recorder:
                     self._recorder.close()
                     self._recorder = None
+                if self._sync_index_file:
+                    try:
+                        self._sync_index_file.flush()
+                        os.fsync(self._sync_index_file.fileno())
+                    except Exception:
+                        pass
+                    self._sync_index_file.close()
+                    self._sync_index_file = None
                 self._segment_start_monotonic = None
                 if device is not None:
                     try:

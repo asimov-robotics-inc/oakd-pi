@@ -105,6 +105,7 @@ Each folder contains:
 - `recording_YYYYMMDD_HHMMSS.mcap` - sensor data (RGB + stereo L/R + IMU)
 - `calibration_YYYYMMDD_HHMMSS.json` - camera intrinsics/extrinsics
 - `metadata_YYYYMMDD_HHMMSS.json` - recording config + device info
+- `sync_index_YYYYMMDD_HHMMSS.csv` - stream, sequence, timestamp for offline sync
 
 ### Copying recordings to another machine
 

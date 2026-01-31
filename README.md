@@ -12,7 +12,7 @@ Headless data capture system for robotics training. Raspberry Pi 5 + OAK-D Pro r
 | IMU | 200Hz accelerometer + gyroscope |
 | IR | Dot projector at 50% for improved depth |
 
-Streams are aligned by sequence number using device timestamps (no Sync node gating). Timestamps come from the device clock, not the Pi.
+Streams are recorded independently and aligned offline using device timestamps or sequence numbers. Timestamps come from the device clock, not the Pi.
 
 ## Hardware
 
@@ -111,6 +111,7 @@ rotates to a new recording every 10 minutes for reliability.
     ├── recording_20260130_143052.mcap    # RGB + stereo L/R + IMU
     ├── calibration_20260130_143052.json  # camera intrinsics/extrinsics
     └── metadata_20260130_143052.json     # recording config + device info
+    └── sync_index_20260130_143052.csv    # stream,seq,timestamp_ns for offline sync
 ```
 
 MCAP payloads are raw binary — H.265 video frames (RGB + left + right) and 48-byte packed IMU structs (6 little-endian doubles: ax, ay, az, gx, gy, gz). The recording is fsynced to disk every 5 seconds to limit data loss on hard power cuts.
@@ -121,8 +122,9 @@ Recordings are intentionally raw. The expected offline steps for robotics labs a
 
 1) **Demux and decode**
    - Decode H.265 frames for `rgb`, `left`, and `right` topics.
-2) **Stream alignment (no Sync node gating)**
-   - Align frames by **sequence number** (preferred) or by **device timestamp**.
+2) **Stream alignment (offline)**
+   - Use `sync_index_*.csv` for **sequence number** alignment (preferred).
+   - If needed, align by **device timestamp** directly from MCAP log_time.
    - RGB/left/right are captured at the same FPS and share the device clock.
 3) **Rectification**
    - Use `calibration_*.json` to compute rectification transforms for left/right.
