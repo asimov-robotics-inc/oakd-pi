@@ -114,6 +114,31 @@ rotates to a new recording every 10 minutes for reliability.
 
 MCAP payloads are raw binary — H.265 video frames (RGB), LZ4-compressed raw16 depth frames, and 48-byte packed IMU structs (6 little-endian doubles: ax, ay, az, gx, gy, gz). The recording is fsynced to disk every 5 seconds to limit data loss on hard power cuts.
 
+## Reliability and failure modes
+
+This system is designed for headless capture with bounded data loss and clear recovery behavior.
+
+### Power loss / hard unplug
+- The MCAP file is **fsynced every 5 seconds**, so **data loss is typically limited to a few seconds**.
+- Recordings are **segmented every 10 minutes**, so **file corruption is limited to the active segment**.
+- Metadata + calibration are written at segment start and fsynced, so they survive power cuts.
+
+### Camera unplug / USB disconnect
+- If the OAK‑D is unplugged, the pipeline errors out, the app **closes the current segment**, and enters a retry loop.
+- The app retries device init every 5 seconds; when the camera returns it **starts a new segment** automatically.
+
+### Disk full
+- The app checks free disk space before each new segment and periodically while recording.
+- If free space is below the threshold, it **stops recording** to avoid corrupt writes.
+
+### CPU or USB bandwidth saturation
+- RGB is encoded on‑device; depth is aligned on‑device; depth is LZ4‑compressed on the Pi.
+- If FPS drops, common fixes are lowering depth resolution/FPS or adjusting IMU rate/batching.
+
+### `fsync()` (why it matters)
+- `fsync()` forces buffered data to be written to disk immediately.
+- It trades a small amount of I/O overhead for **predictable, bounded data loss** on power cuts.
+
 ## Offline processing
 
 Depth is already aligned to RGB on-device. For downstream use:
