@@ -26,7 +26,7 @@ Build a high-quality egocentric data capture device for training robots. The sys
 - Stereo mono cameras: H.265 @ 720p, 30fps (left + right)
 - IMU: 200Hz accelerometer + gyroscope
 - IR projector: Enabled at 50% intensity
-- RGB + stereo L/R synchronized via DepthAI Sync node
+- RGB + stereo L/R recorded with device timestamps; aligned by sequence number
 
 ### Output Format
 - MCAP files (industry standard, Foxglove/ROS compatible)

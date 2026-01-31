@@ -12,7 +12,7 @@ Headless data capture system for robotics training. Raspberry Pi 5 + OAK-D Pro r
 | IMU | 200Hz accelerometer + gyroscope |
 | IR | Dot projector at 50% for improved depth |
 
-All streams are software-synchronized via DepthAI Sync node (<10ms threshold). Timestamps come from the device clock, not the Pi.
+Streams are aligned by sequence number using device timestamps (no Sync node gating). Timestamps come from the device clock, not the Pi.
 
 ## Hardware
 
@@ -114,6 +114,24 @@ rotates to a new recording every 10 minutes for reliability.
 ```
 
 MCAP payloads are raw binary — H.265 video frames (RGB + left + right) and 48-byte packed IMU structs (6 little-endian doubles: ax, ay, az, gx, gy, gz). The recording is fsynced to disk every 5 seconds to limit data loss on hard power cuts.
+
+## Offline processing (sync + rectification + depth)
+
+Recordings are intentionally raw. The expected offline steps for robotics labs are:
+
+1) **Demux and decode**
+   - Decode H.265 frames for `rgb`, `left`, and `right` topics.
+2) **Stream alignment (no Sync node gating)**
+   - Align frames by **sequence number** (preferred) or by **device timestamp**.
+   - RGB/left/right are captured at the same FPS and share the device clock.
+3) **Rectification**
+   - Use `calibration_*.json` to compute rectification transforms for left/right.
+   - Rectify the stereo pair before any disparity/depth estimation.
+4) **Depth / disparity (optional)**
+   - Run your preferred stereo matcher or learned depth model on rectified L/R.
+5) **IMU alignment**
+   - IMU samples are timestamped with the same device clock.
+   - Align IMU to camera frames by nearest timestamp if needed.
 
 ### Copying recordings off the Pi
 

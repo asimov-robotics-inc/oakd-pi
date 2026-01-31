@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - systemd now restarts indefinitely without start-limit throttling
 - Replaced on-device depth recording with stereo left/right H.265 streams (depth computed offline)
+- Aligned RGB/L/R by sequence number instead of Sync node to avoid frame drops
 
 ### Removed
 - Bundle-based deployment scripts; manual setup is now the only supported path
