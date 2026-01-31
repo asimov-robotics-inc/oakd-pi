@@ -348,13 +348,13 @@ class CaptureApp:
 
                     # Convert mono frames to NV12 for H.265 encoder
                     manip_left = pipeline.create(dai.node.ImageManip)
-                    manip_left.initialConfig.setResize(RESOLUTION[0], RESOLUTION[1])
+                    manip_left.initialConfig.setOutputSize(RESOLUTION[0], RESOLUTION[1])
                     manip_left.initialConfig.setFrameType(dai.ImgFrame.Type.NV12)
                     manip_left.setMaxOutputFrameSize(int(RESOLUTION[0] * RESOLUTION[1] * 3 / 2))
                     left_out.link(manip_left.inputImage)
 
                     manip_right = pipeline.create(dai.node.ImageManip)
-                    manip_right.initialConfig.setResize(RESOLUTION[0], RESOLUTION[1])
+                    manip_right.initialConfig.setOutputSize(RESOLUTION[0], RESOLUTION[1])
                     manip_right.initialConfig.setFrameType(dai.ImgFrame.Type.NV12)
                     manip_right.setMaxOutputFrameSize(int(RESOLUTION[0] * RESOLUTION[1] * 3 / 2))
                     right_out.link(manip_right.inputImage)
