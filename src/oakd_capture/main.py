@@ -385,8 +385,8 @@ class CaptureApp:
                     imu = pipeline.create(dai.node.IMU)
                     imu.enableIMUSensor(dai.IMUSensor.ACCELEROMETER_RAW, IMU_HZ)
                     imu.enableIMUSensor(dai.IMUSensor.GYROSCOPE_RAW, IMU_HZ)
-                    imu.setBatchReportThreshold(5)
-                    imu.setMaxBatchReports(20)
+                    imu.setBatchReportThreshold(10)
+                    imu.setMaxBatchReports(50)
 
                     # Output queues - synchronized RGB + depth + IMU
                     q_sync = sync.out.createOutputQueue(maxSize=2, blocking=True)
