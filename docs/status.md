@@ -13,6 +13,7 @@
 
 - **M9: Crash-Safe Recording** - Periodic fsync + early metadata write to survive hard power cuts
 - **M10: Boot Speed & Robustness** - Faster systemd startup, direct venv exec, tighter shutdown timeout
+- **M11: Depth Preset Alignment** - Recorder now uses StereoDepth DEFAULT preset + subpixel(3-bit), removing manual depth filter overrides for viewer-like density
 
 ### Upcoming
 (none)

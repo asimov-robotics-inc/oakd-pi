@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.2] - 2026-02-01
+
+### Changed
+- Switched StereoDepth to a preset-driven baseline (`DEFAULT`) for denser, viewer-like depth output
+- Enabled subpixel depth (3 fractional bits) while keeping RGB-aligned depth recording
+- Removed manual depth overrides (median/confidence/speckle) so preset tuning controls depth filtering
+- Updated pipeline logging and metadata to report preset-based depth tuning
+
 ## [0.5.1] - 2026-01-31
 
 ### Added

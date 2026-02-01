@@ -40,6 +40,7 @@ H265_BITRATE = 6_000_000  # 6 Mbps - high quality for 480p
 SYNC_METHOD = "device_sync_node"
 SYNC_THRESHOLD_MS = 10
 FSYNC_INTERVAL_S = 5.0  # Flush MCAP to disk every N seconds
+DEPTH_PRESET = dai.node.StereoDepth.PresetMode.DEFAULT
 
 
 class State(Enum):
@@ -204,15 +205,15 @@ class CaptureApp:
                     "video_encoding": "h265",
                     "h265_bitrate": H265_BITRATE,
                     "depth": {
+                        "preset": "DEFAULT",
                         "aligned_to": "rgb",
                         "left_right_check": True,
+                        "subpixel": True,
+                        "subpixel_fractional_bits": 3,
                         "rectification": True,
                         "depth_encoding": "raw16_mm_lz4",
                         "depth_compression": "lz4frame",
-                        "median_filter": "3x3",
-                        "confidence_threshold": 200,
-                        "speckle_filter": True,
-                        "speckle_range": 50,
+                        "tuning_source": "stereo_preset",
                     },
                 },
             }
@@ -359,14 +360,13 @@ class CaptureApp:
                     stereo = pipeline.create(dai.node.StereoDepth)
                     left_out.link(stereo.left)
                     right_out.link(stereo.right)
+                    stereo.setDefaultProfilePreset(DEPTH_PRESET)
                     stereo.setRectification(True)
                     stereo.setLeftRightCheck(True)
+                    stereo.setSubpixel(True)
+                    stereo.setSubpixelFractionalBits(3)
                     stereo.setDepthAlign(dai.CameraBoardSocket.CAM_A)
                     stereo.setOutputSize(RESOLUTION[0], RESOLUTION[1])
-                    stereo.initialConfig.setMedianFilter(dai.MedianFilter.KERNEL_3x3)
-                    stereo.initialConfig.setConfidenceThreshold(200)
-                    stereo.initialConfig.setSpeckleFilter(True)
-                    stereo.initialConfig.setSpeckleRange(50)
 
                     # H.265 video encoder (encode on camera, not Pi)
                     enc_rgb = pipeline.create(dai.node.VideoEncoder)
@@ -395,7 +395,7 @@ class CaptureApp:
                     log.info(
                         f"Pipeline: {RESOLUTION[0]}x{RESOLUTION[1]} @ {CAMERA_FPS}fps, "
                         f"H.265 @ {H265_BITRATE//1_000_000}Mbps, RGB + depth aligned, "
-                        f"sync threshold {SYNC_THRESHOLD_MS}ms"
+                        f"depth preset DEFAULT, sync threshold {SYNC_THRESHOLD_MS}ms"
                     )
 
                     # Start pipeline
