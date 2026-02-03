@@ -33,7 +33,7 @@ DISK_CHECK_INTERVAL_S = 60.0
 DEVICE_RETRY_INTERVAL_S = 5.0
 
 # Video encoding settings (H.265 on camera)
-RESOLUTION = (640, 480)  # 480p for all cameras
+RESOLUTION = (1280, 720)  # 720p for all cameras
 H265_BITRATE = 6_000_000  # 6 Mbps - high quality for 480p
 
 # Synchronization settings

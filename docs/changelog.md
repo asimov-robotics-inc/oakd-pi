@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.3] - 2026-02-03
+
+### Changed
+- Capture resolution set to 1280x720 (720p)
+
 ## [0.5.2] - 2026-02-01
 
 ### Changed
@@ -17,7 +22,7 @@ All notable changes to this project will be documented in this file.
 - Periodic disk space checks during recording
 - Durable fsync of metadata and calibration files
 - Device init retry loop to keep recording attempts alive until the camera is available
- - LZ4 compression for depth frames to reduce storage size
+- LZ4 compression for depth frames to reduce storage size
 
 ### Changed
 - systemd now restarts indefinitely without start-limit throttling
