@@ -102,7 +102,7 @@ ls -la ~/recordings/
 ```
 
 Each folder contains:
-- `recording_YYYYMMDD_HHMMSS.mcap` - sensor data (RGB + depth + IMU @ 200Hz)
+- `recording_YYYYMMDD_HHMMSS.mcap` - sensor data (RGB + left/right mono + IMU @ 100Hz)
 - `calibration_YYYYMMDD_HHMMSS.json` - camera intrinsics/extrinsics
 - `metadata_YYYYMMDD_HHMMSS.json` - recording config + device info
 
@@ -143,8 +143,8 @@ ssh pi@pi.local
 ### Camera bandwidth errors (X_LINK_ERROR)
 
 Use the blue USB 3.0 ports, not USB 2.0. The current config uses:
-- RGB: 640x480
-- Depth: aligned to RGB (640x480, LZ4-compressed)
+- RGB: 1280x720 (H.265)
+- Mono left/right: 1280x800 (MJPEG)
 
 If errors persist, try a powered USB hub or reduce FPS/resolution.
 

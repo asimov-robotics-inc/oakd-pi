@@ -1,17 +1,18 @@
 # OAK-D Egocentric Capture
 
-Headless data capture system for robotics training. Raspberry Pi 5 + OAK-D Pro records synchronized RGB, depth (aligned to RGB), and IMU streams to MCAP format. Starts recording on boot, no screen or keyboard needed. If the camera isn't available at boot, the app keeps retrying until it is.
+Headless data capture system for robotics training. Raspberry Pi 5 + OAK-D Pro records synchronized RGB, left/right monochrome, and IMU streams to MCAP format. Starts recording on boot, no screen or keyboard needed. If the camera isn't available at boot, the app keeps retrying until it is.
 
 ## What it captures
 
 | Stream | Details |
 |--------|---------|
-| RGB | 480p @ 30fps, H.265 encoded on-camera (6 Mbps) |
-| Depth | StereoDepth on-device, aligned to RGB (raw16 mm, LZ4-compressed) |
-| IMU | 200Hz accelerometer + gyroscope |
-| IR | Dot projector at 50% for improved depth |
+| RGB | 720p @ 30fps, H.265 encoded on-camera (6 Mbps) |
+| Mono Left | 800p @ 30fps, MJPEG encoded on-camera (quality 90) |
+| Mono Right | 800p @ 30fps, MJPEG encoded on-camera (quality 90) |
+| IMU | 100Hz accelerometer + gyroscope |
+| IR | Dot projector at 50% for improved texture |
 
-RGB and depth are synchronized on-device via the Sync node. Timestamps come from the device clock, not the Pi.
+RGB and mono streams are synchronized on-device via the Sync node. Timestamps come from the device clock, not the Pi.
 
 ## Hardware
 
@@ -107,12 +108,12 @@ rotates to a new recording every 10 minutes for reliability.
 ```
 ~/recordings/
 └── 20260130_143052/
-    ├── recording_20260130_143052.mcap    # RGB + depth + IMU
+    ├── recording_20260130_143052.mcap    # RGB + left/right mono + IMU
     ├── calibration_20260130_143052.json  # camera intrinsics/extrinsics
     └── metadata_20260130_143052.json     # recording config + device info
 ```
 
-MCAP payloads are raw binary — H.265 video frames (RGB), LZ4-compressed raw16 depth frames, and 48-byte packed IMU structs (6 little-endian doubles: ax, ay, az, gx, gy, gz). The recording is fsynced to disk every 5 seconds to limit data loss on hard power cuts.
+MCAP payloads are raw binary — H.265 video frames (RGB), MJPEG frames (left/right mono), and 48-byte packed IMU structs (6 little-endian doubles: ax, ay, az, gx, gy, gz). The recording is fsynced to disk every 5 seconds to limit data loss on hard power cuts.
 
 ## Reliability and failure modes
 
@@ -132,8 +133,8 @@ This system is designed for headless capture with bounded data loss and clear re
 - If free space is below the threshold, it **stops recording** to avoid corrupt writes.
 
 ### CPU or USB bandwidth saturation
-- RGB is encoded on‑device; depth is aligned on‑device; depth is LZ4‑compressed on the Pi.
-- If FPS drops, common fixes are lowering depth resolution/FPS or adjusting IMU rate/batching.
+- RGB and mono streams are encoded on‑device; IMU is lightweight.
+- If FPS drops, common fixes are lowering mono resolution/FPS or reducing RGB bitrate.
 
 ### `fsync()` (why it matters)
 - `fsync()` forces buffered data to be written to disk immediately.
@@ -141,13 +142,14 @@ This system is designed for headless capture with bounded data loss and clear re
 
 ## Offline processing
 
-Depth is already aligned to RGB on-device. For downstream use:
+Depth is computed offline from the recorded mono pair if needed. For downstream use:
 
 1) **Demux and decode**
    - Decode H.265 frames for `rgb`.
-2) **Depth usage**
-   - Decompress LZ4 depth frames to raw16 (aligned to RGB).
-   - Depth is lightly filtered on-device (median 3x3 + speckle + confidence threshold).
+   - Decode MJPEG frames for `left` and `right`.
+2) **Stereo usage**
+   - Rectify mono frames using the calibration file.
+   - Run your stereo model (e.g., FoundationStereo/IGEV) on the rectified pair.
 3) **IMU alignment**
    - IMU samples are timestamped with the same device clock.
    - Align IMU to camera frames by nearest timestamp if needed.

@@ -22,11 +22,11 @@ Build a high-quality egocentric data capture device for training robots. The sys
 - Each recording gets its own timestamped folder
 
 ### Data Capture
-- RGB camera: H.265 @ 480p, 30fps
-- Depth: StereoDepth on-device, aligned to RGB (raw16, LZ4-compressed, light filtering)
-- IMU: 200Hz accelerometer + gyroscope
+- RGB camera: H.265 @ 720p, 30fps
+- Mono left/right: MJPEG @ 800p, 30fps
+- IMU: 100Hz accelerometer + gyroscope
 - IR projector: Enabled at 50% intensity
-- RGB + depth synchronized via device Sync node (aligned on-device)
+- RGB + mono synchronized via device Sync node
 
 ### Output Format
 - MCAP files (industry standard, Foxglove/ROS compatible)

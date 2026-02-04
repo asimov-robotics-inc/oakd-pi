@@ -13,7 +13,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import depthai as dai
-import lz4.frame as lz4f
 from mcap.writer import Writer
 
 logging.basicConfig(
@@ -25,7 +24,7 @@ log = logging.getLogger(__name__)
 # Configuration
 RECORDINGS_DIR = Path.home() / "recordings"
 CAMERA_FPS = 30  # All cameras synced at same FPS
-IMU_HZ = 200  # IMU sample rate
+IMU_HZ = 100  # IMU sample rate
 IR_INTENSITY = 0.5
 MIN_FREE_GB = 2.0
 SEGMENT_MINUTES = 10
@@ -33,14 +32,15 @@ DISK_CHECK_INTERVAL_S = 60.0
 DEVICE_RETRY_INTERVAL_S = 5.0
 
 # Video encoding settings (H.265 on camera)
-RESOLUTION = (640, 480)  # 480p for all cameras
-H265_BITRATE = 6_000_000  # 6 Mbps - high quality for 480p
+RGB_RESOLUTION = (1280, 720)  # 720p RGB
+MONO_RESOLUTION = (1280, 800)  # 800p mono (OV9282 native)
+H265_BITRATE = 6_000_000  # 6 Mbps - adjust if RGB quality or FPS drops
+MONO_MJPEG_QUALITY = 90
 
 # Synchronization settings
 SYNC_METHOD = "device_sync_node"
 SYNC_THRESHOLD_MS = 10
 FSYNC_INTERVAL_S = 5.0  # Flush MCAP to disk every N seconds
-DEPTH_PRESET = dai.node.StereoDepth.PresetMode.DEFAULT
 
 
 class State(Enum):
@@ -66,7 +66,7 @@ class McapRecorder:
         self._writer.start()
 
         # Register channels (raw bytes, no schema)
-        for topic_name in ("rgb", "depth", "imu"):
+        for topic_name in ("rgb", "left", "right", "imu"):
             self._channels[topic_name] = self._writer.register_channel(
                 topic=f"/oak/{topic_name}",
                 message_encoding="",
@@ -77,21 +77,23 @@ class McapRecorder:
         self._writer.add_metadata(
             "recording_config",
             {
-                "resolution": f"{RESOLUTION[0]}x{RESOLUTION[1]}",
+                "rgb_resolution": f"{RGB_RESOLUTION[0]}x{RGB_RESOLUTION[1]}",
+                "mono_resolution": f"{MONO_RESOLUTION[0]}x{MONO_RESOLUTION[1]}",
                 "fps": str(CAMERA_FPS),
-                "video_encoding": "h265",
+                "rgb_encoding": "h265",
+                "rgb_bitrate": str(H265_BITRATE),
+                "mono_encoding": "mjpeg",
+                "mono_quality": str(MONO_MJPEG_QUALITY),
                 "imu_hz": str(IMU_HZ),
                 "sync_method": SYNC_METHOD,
                 "sync_threshold_ms": str(SYNC_THRESHOLD_MS),
                 "timestamp_source": "device",
-                "depth_encoding": "raw16_mm_lz4",
-                "depth_compression": "lz4frame",
             },
         )
         log.info(f"Opened MCAP: {self._filepath}")
 
     def write_frame(self, channel_name: str, data: bytes, timestamp_ns: int):
-        """Write raw H.265 encoded frame bytes to the MCAP file."""
+        """Write encoded frame bytes to the MCAP file."""
         if not self._writer or not self._file or channel_name not in self._channels:
             return
 
@@ -195,26 +197,19 @@ class CaptureApp:
                 "mcap_path": str(mcap_path),
                 "device_id": self._device_id,
                 "recording_config": {
-                    "resolution": f"{RESOLUTION[0]}x{RESOLUTION[1]}",
+                    "rgb_resolution": f"{RGB_RESOLUTION[0]}x{RGB_RESOLUTION[1]}",
+                    "mono_resolution": f"{MONO_RESOLUTION[0]}x{MONO_RESOLUTION[1]}",
                     "camera_fps": CAMERA_FPS,
                     "imu_hz": IMU_HZ,
                     "sync_method": SYNC_METHOD,
                     "sync_threshold_ms": SYNC_THRESHOLD_MS,
                     "timestamp_source": "device",
                     "ir_intensity": IR_INTENSITY,
-                    "video_encoding": "h265",
+                    "rgb_encoding": "h265",
                     "h265_bitrate": H265_BITRATE,
-                    "depth": {
-                        "preset": "DEFAULT",
-                        "aligned_to": "rgb",
-                        "left_right_check": True,
-                        "subpixel": True,
-                        "subpixel_fractional_bits": 3,
-                        "rectification": True,
-                        "depth_encoding": "raw16_mm_lz4",
-                        "depth_compression": "lz4frame",
-                        "tuning_source": "stereo_preset",
-                    },
+                    "mono_encoding": "mjpeg",
+                    "mono_quality": MONO_MJPEG_QUALITY,
+                    "streams": ["rgb", "left", "right", "imu"],
                 },
             }
             metadata_path = recording_dir / f"metadata_{timestamp}.json"
@@ -335,51 +330,47 @@ class CaptureApp:
                 # Create pipeline with device context (v3 API)
                 with dai.Pipeline(device) as pipeline:
                     # RGB camera
-                    cam_rgb = pipeline.create(dai.node.Camera).build(
-                        boardSocket=dai.CameraBoardSocket.CAM_A,
-                        sensorFps=CAMERA_FPS,
-                    )
+                    cam_rgb = pipeline.create(dai.node.ColorCamera)
+                    cam_rgb.setBoardSocket(dai.CameraBoardSocket.CAM_A)
+                    cam_rgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_720_P)
+                    cam_rgb.setFps(CAMERA_FPS)
+                    cam_rgb.setInterleaved(False)
 
                     # Mono cameras for stereo (hardware synced via FSYNC)
-                    cam_left = pipeline.create(dai.node.Camera).build(
-                        boardSocket=dai.CameraBoardSocket.CAM_B,
-                        sensorFps=CAMERA_FPS,
-                    )
+                    cam_left = pipeline.create(dai.node.MonoCamera)
+                    cam_left.setBoardSocket(dai.CameraBoardSocket.CAM_B)
+                    cam_left.setResolution(dai.MonoCameraProperties.SensorResolution.THE_800_P)
+                    cam_left.setFps(CAMERA_FPS)
 
-                    cam_right = pipeline.create(dai.node.Camera).build(
-                        boardSocket=dai.CameraBoardSocket.CAM_C,
-                        sensorFps=CAMERA_FPS,
-                    )
-
-                    # Get camera outputs (encoder-friendly formats)
-                    rgb_out = cam_rgb.requestOutput(RESOLUTION, type=dai.ImgFrame.Type.NV12)
-                    left_out = cam_left.requestOutput(RESOLUTION, type=dai.ImgFrame.Type.GRAY8)
-                    right_out = cam_right.requestOutput(RESOLUTION, type=dai.ImgFrame.Type.GRAY8)
-
-                    # StereoDepth (on-device depth/disparity from mono pair)
-                    stereo = pipeline.create(dai.node.StereoDepth)
-                    left_out.link(stereo.left)
-                    right_out.link(stereo.right)
-                    stereo.setDefaultProfilePreset(DEPTH_PRESET)
-                    stereo.setRectification(True)
-                    stereo.setLeftRightCheck(True)
-                    stereo.setSubpixel(True)
-                    stereo.setSubpixelFractionalBits(3)
-                    stereo.setDepthAlign(dai.CameraBoardSocket.CAM_A)
-                    stereo.setOutputSize(RESOLUTION[0], RESOLUTION[1])
+                    cam_right = pipeline.create(dai.node.MonoCamera)
+                    cam_right.setBoardSocket(dai.CameraBoardSocket.CAM_C)
+                    cam_right.setResolution(dai.MonoCameraProperties.SensorResolution.THE_800_P)
+                    cam_right.setFps(CAMERA_FPS)
 
                     # H.265 video encoder (encode on camera, not Pi)
                     enc_rgb = pipeline.create(dai.node.VideoEncoder)
                     enc_rgb.setDefaultProfilePreset(CAMERA_FPS, dai.VideoEncoderProperties.Profile.H265_MAIN)
                     enc_rgb.setBitrate(H265_BITRATE)
-                    rgb_out.link(enc_rgb.input)
+                    cam_rgb.video.link(enc_rgb.input)
 
-                    # Sync node - synchronizes RGB + depth by timestamp
+                    # MJPEG encoders for mono streams (stereo-safe, intra-frame)
+                    enc_left = pipeline.create(dai.node.VideoEncoder)
+                    enc_left.setDefaultProfilePreset(CAMERA_FPS, dai.VideoEncoderProperties.Profile.MJPEG)
+                    enc_left.setQuality(MONO_MJPEG_QUALITY)
+                    cam_left.out.link(enc_left.input)
+
+                    enc_right = pipeline.create(dai.node.VideoEncoder)
+                    enc_right.setDefaultProfilePreset(CAMERA_FPS, dai.VideoEncoderProperties.Profile.MJPEG)
+                    enc_right.setQuality(MONO_MJPEG_QUALITY)
+                    cam_right.out.link(enc_right.input)
+
+                    # Sync node - synchronizes RGB + mono pairs by timestamp
                     sync = pipeline.create(dai.node.Sync)
                     sync.setSyncThreshold(timedelta(milliseconds=SYNC_THRESHOLD_MS))
                     sync.setSyncAttempts(0)
-                    enc_rgb.out.link(sync.inputs["rgb"])
-                    stereo.depth.link(sync.inputs["depth"])
+                    enc_rgb.bitstream.link(sync.inputs["rgb"])
+                    enc_left.bitstream.link(sync.inputs["left"])
+                    enc_right.bitstream.link(sync.inputs["right"])
 
                     # IMU (separate - runs at higher rate)
                     imu = pipeline.create(dai.node.IMU)
@@ -388,14 +379,23 @@ class CaptureApp:
                     imu.setBatchReportThreshold(10)
                     imu.setMaxBatchReports(50)
 
-                    # Output queues - synchronized RGB + depth + IMU
+                    # Output queues - synchronized RGB + mono + IMU
                     q_sync = sync.out.createOutputQueue(maxSize=2, blocking=True)
                     q_imu = imu.out.createOutputQueue(maxSize=100, blocking=False)
 
                     log.info(
-                        f"Pipeline: {RESOLUTION[0]}x{RESOLUTION[1]} @ {CAMERA_FPS}fps, "
-                        f"H.265 @ {H265_BITRATE//1_000_000}Mbps, RGB + depth aligned, "
-                        f"depth preset DEFAULT, sync threshold {SYNC_THRESHOLD_MS}ms"
+                        "Pipeline: RGB %sx%s @ %sfps (H.265 %sMbps), "
+                        "mono %sx%s @ %sfps (MJPEG Q%s), "
+                        "sync threshold %sms",
+                        RGB_RESOLUTION[0],
+                        RGB_RESOLUTION[1],
+                        CAMERA_FPS,
+                        H265_BITRATE // 1_000_000,
+                        MONO_RESOLUTION[0],
+                        MONO_RESOLUTION[1],
+                        CAMERA_FPS,
+                        MONO_MJPEG_QUALITY,
+                        SYNC_THRESHOLD_MS,
                     )
 
                     # Start pipeline
@@ -426,8 +426,6 @@ class CaptureApp:
                             for name, frame in sync_msg:
                                 ts = int(frame.getTimestampDevice().total_seconds() * 1e9)
                                 data = frame.getData()
-                                if name == "depth":
-                                    data = lz4f.compress(data)
                                 self._recorder.write_frame(name, data, ts)
                         except Exception:
                             if not imu_packets:

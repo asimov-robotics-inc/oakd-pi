@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.3] - 2026-02-04
+
+### Changed
+- Switched capture to RGB 720p H.265 + left/right mono 800p MJPEG (no on-device depth)
+- Reduced IMU rate to 100Hz
+- Updated docs and metadata to reflect the new stream set
+
 ## [0.5.2] - 2026-02-01
 
 ### Changed
