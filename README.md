@@ -9,7 +9,7 @@ Headless data capture system for robotics training. Raspberry Pi 5 + OAK-D Pro r
 | RGB | 720p @ 30fps, H.265 encoded on-camera (6 Mbps) |
 | Mono Left | 800p @ 30fps, MJPEG encoded on-camera (quality 90) |
 | Mono Right | 800p @ 30fps, MJPEG encoded on-camera (quality 90) |
-| IMU | 100Hz accelerometer + gyroscope |
+| IMU | 200Hz accelerometer + gyroscope |
 | IR | Dot projector at 50% for improved texture |
 
 RGB and mono streams are synchronized on-device via the Sync node. Timestamps come from the device clock, not the Pi.

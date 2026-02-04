@@ -14,7 +14,7 @@
 - **M9: Crash-Safe Recording** - Periodic fsync + early metadata write to survive hard power cuts
 - **M10: Boot Speed & Robustness** - Faster systemd startup, direct venv exec, tighter shutdown timeout
 - **M11: Depth Preset Alignment** - Recorder now uses StereoDepth DEFAULT preset + subpixel(3-bit), removing manual depth filter overrides for viewer-like density
-- **M12: Encoded Stereo Capture** - Switched to RGB 720p H.265 + mono 800p MJPEG with IMU 100Hz (no on-device depth)
+- **M12: Encoded Stereo Capture** - Switched to RGB 720p H.265 + mono 800p MJPEG with IMU 200Hz (no on-device depth)
 
 ### Upcoming
 (none)

@@ -102,7 +102,7 @@ ls -la ~/recordings/
 ```
 
 Each folder contains:
-- `recording_YYYYMMDD_HHMMSS.mcap` - sensor data (RGB + left/right mono + IMU @ 100Hz)
+- `recording_YYYYMMDD_HHMMSS.mcap` - sensor data (RGB + left/right mono + IMU @ 200Hz)
 - `calibration_YYYYMMDD_HHMMSS.json` - camera intrinsics/extrinsics
 - `metadata_YYYYMMDD_HHMMSS.json` - recording config + device info
 

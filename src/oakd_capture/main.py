@@ -24,7 +24,7 @@ log = logging.getLogger(__name__)
 # Configuration
 RECORDINGS_DIR = Path.home() / "recordings"
 CAMERA_FPS = 30  # All cameras synced at same FPS
-IMU_HZ = 100  # IMU sample rate
+IMU_HZ = 200  # IMU sample rate
 IR_INTENSITY = 0.5
 MIN_FREE_GB = 2.0
 SEGMENT_MINUTES = 10
