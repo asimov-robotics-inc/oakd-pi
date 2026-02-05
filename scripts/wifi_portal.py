@@ -161,7 +161,7 @@ class DnsHijackServer(threading.Thread):
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             self.sock.bind(("0.0.0.0", self.port))
         except Exception as exc:
-            print(f"DNS server failed to start: {exc}")
+            print(f"DNS server failed to start: {exc}", flush=True)
             return
 
         while True:
