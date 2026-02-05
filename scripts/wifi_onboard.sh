@@ -9,6 +9,14 @@ HOTSPOT_PASS="${WIFI_HOTSPOT_PASS:-}"
 HOTSPOT_IFACE="${WIFI_HOTSPOT_IFACE:-wlan0}"
 PORTAL_PORT="${WIFI_PORTAL_PORT:-80}"
 HOTSPOT_IP="${WIFI_HOTSPOT_IP:-192.168.4.1/24}"
+HOTSPOT_IP_ADDR="${HOTSPOT_IP%/*}"
+CREDS_PATH="${WIFI_CREDS_PATH:-/tmp/oakd-wifi-creds.json}"
+HOSTAPD_CONF="/tmp/oakd-hostapd.conf"
+DNSMASQ_CONF="/tmp/oakd-dnsmasq.conf"
+HOSTAPD_PID="/tmp/oakd-hostapd.pid"
+DNSMASQ_PID="/tmp/oakd-dnsmasq.pid"
+PORTAL_PID=""
+DNSMASQ_SYSTEM_STOPPED=""
 
 log() {
   echo "[wifi-onboard] $*"
@@ -58,21 +66,38 @@ cleanup() {
     wait "$PORTAL_PID" >/dev/null 2>&1 || true
   fi
 
-  if [[ -n "${HOTSPOT_CONN:-}" ]]; then
-    if nmcli -t -f NAME,TYPE con show --active 2>/dev/null | grep -q "^${HOTSPOT_CONN}:wifi"; then
-      nmcli con down "$HOTSPOT_CONN" >/dev/null 2>&1 || true
-    fi
+  if [[ -f "$HOSTAPD_PID" ]]; then
+    kill "$(cat "$HOSTAPD_PID")" >/dev/null 2>&1 || true
+  fi
+  if [[ -f "$DNSMASQ_PID" ]]; then
+    kill "$(cat "$DNSMASQ_PID")" >/dev/null 2>&1 || true
+  fi
+  rm -f "$HOSTAPD_PID" "$DNSMASQ_PID" "$HOSTAPD_CONF" "$DNSMASQ_CONF" "$CREDS_PATH"
+
+  if [[ -n "$DNSMASQ_SYSTEM_STOPPED" ]]; then
+    systemctl start dnsmasq >/dev/null 2>&1 || true
+  fi
+
+  ip addr flush dev "$HOTSPOT_IFACE" >/dev/null 2>&1 || true
+  ip link set "$HOTSPOT_IFACE" down >/dev/null 2>&1 || true
+  ip link set "$HOTSPOT_IFACE" up >/dev/null 2>&1 || true
+
+  if have_nmcli; then
+    nmcli dev set "$HOTSPOT_IFACE" managed yes >/dev/null 2>&1 || true
   fi
 }
 
 trap cleanup EXIT
 
-if ! have_nmcli; then
-  log "nmcli not found; skipping wifi onboarding"
+if ! command -v hostapd >/dev/null 2>&1 || ! command -v dnsmasq >/dev/null 2>&1; then
+  log "hostapd or dnsmasq not found; skipping wifi onboarding"
   exit 0
 fi
 
-nmcli radio wifi on >/dev/null 2>&1 || true
+if have_nmcli; then
+  nmcli radio wifi on >/dev/null 2>&1 || true
+  nmcli dev set "$HOTSPOT_IFACE" managed no >/dev/null 2>&1 || true
+fi
 
 if wifi_connected; then
   log "Wi-Fi already connected; skipping onboarding"
@@ -81,35 +106,110 @@ fi
 
 remove_existing_hotspot
 
-log "Starting hotspot '$HOTSPOT_SSID' on $HOTSPOT_IFACE"
-if [[ -n "$HOTSPOT_PASS" && ${#HOTSPOT_PASS} -ge 8 ]]; then
-  nmcli dev wifi hotspot ifname "$HOTSPOT_IFACE" ssid "$HOTSPOT_SSID" password "$HOTSPOT_PASS" >/dev/null
-  HOTSPOT_CONN="$(nmcli -t -f NAME,TYPE con show --active | awk -F: '$2=="wifi" {print $1; exit}')"
-else
-  # Create an open hotspot explicitly (no wifi-security settings)
-  nmcli con add type wifi ifname "$HOTSPOT_IFACE" con-name "$HOTSPOT_SSID" ssid "$HOTSPOT_SSID" >/dev/null
-  nmcli con modify "$HOTSPOT_SSID" 802-11-wireless.mode ap 802-11-wireless.band bg ipv4.method shared ipv6.method ignore >/dev/null
-  nmcli con up "$HOTSPOT_SSID" >/dev/null
-  HOTSPOT_CONN="$HOTSPOT_SSID"
-fi
+start_hotspot() {
+  log "Starting hotspot '$HOTSPOT_SSID' on $HOTSPOT_IFACE"
+  ip link set "$HOTSPOT_IFACE" down >/dev/null 2>&1 || true
+  ip addr flush dev "$HOTSPOT_IFACE" >/dev/null 2>&1 || true
+  ip addr add "$HOTSPOT_IP" dev "$HOTSPOT_IFACE" >/dev/null 2>&1 || true
+  ip link set "$HOTSPOT_IFACE" up >/dev/null 2>&1 || true
 
-# Force a known hotspot IP so the portal URL is stable
-if [[ -n "$HOTSPOT_CONN" ]]; then
-  nmcli con modify "$HOTSPOT_CONN" ipv4.addresses "$HOTSPOT_IP" ipv4.method shared ipv6.method ignore >/dev/null 2>&1 || true
-  nmcli con down "$HOTSPOT_CONN" >/dev/null 2>&1 || true
-  nmcli con up "$HOTSPOT_CONN" >/dev/null 2>&1 || true
-fi
+  if systemctl is-active dnsmasq >/dev/null 2>&1; then
+    systemctl stop dnsmasq >/dev/null 2>&1 || true
+    DNSMASQ_SYSTEM_STOPPED=1
+  fi
+
+  cat > "$HOSTAPD_CONF" <<EOF
+interface=$HOTSPOT_IFACE
+driver=nl80211
+ssid=$HOTSPOT_SSID
+hw_mode=g
+channel=6
+auth_algs=1
+ignore_broadcast_ssid=0
+wmm_enabled=0
+EOF
+
+  if [[ -n "$HOTSPOT_PASS" && ${#HOTSPOT_PASS} -ge 8 ]]; then
+    cat >> "$HOSTAPD_CONF" <<EOF
+wpa=2
+wpa_passphrase=$HOTSPOT_PASS
+wpa_key_mgmt=WPA-PSK
+wpa_pairwise=TKIP
+rsn_pairwise=CCMP
+EOF
+  fi
+
+  cat > "$DNSMASQ_CONF" <<EOF
+interface=$HOTSPOT_IFACE
+bind-interfaces
+dhcp-range=192.168.4.2,192.168.4.50,255.255.255.0,24h
+dhcp-option=option:router,${HOTSPOT_IP_ADDR}
+dhcp-option=option:dns-server,${HOTSPOT_IP_ADDR}
+address=/#/${HOTSPOT_IP_ADDR}
+no-resolv
+no-hosts
+EOF
+
+  hostapd -B -P "$HOSTAPD_PID" "$HOSTAPD_CONF" >/dev/null 2>&1
+  dnsmasq --conf-file="$DNSMASQ_CONF" --pid-file="$DNSMASQ_PID" >/dev/null 2>&1
+}
+
+start_hotspot
 
 log "Launching captive portal on port $PORTAL_PORT"
-PORTAL_IP="${HOTSPOT_IP%/*}"
-python3 "$SCRIPT_DIR/wifi_portal.py" --port "$PORTAL_PORT" --interface "$HOTSPOT_IFACE" --ssid "$HOTSPOT_SSID" --dns-ip "$PORTAL_IP" &
+python3 "$SCRIPT_DIR/wifi_portal.py" \
+  --port "$PORTAL_PORT" \
+  --interface "$HOTSPOT_IFACE" \
+  --ssid "$HOTSPOT_SSID" \
+  --dns-ip "$HOTSPOT_IP_ADDR" \
+  --no-dns \
+  --out "$CREDS_PATH" &
 PORTAL_PID=$!
 
 START_TS=$(date +%s)
 while true; do
-  if wifi_connected; then
-    log "Wi-Fi connected; shutting down hotspot"
-    break
+  if [[ -f "$CREDS_PATH" ]]; then
+    ssid="$(python3 - <<PY
+import json
+import sys
+with open("$CREDS_PATH", "r", encoding="utf-8") as f:
+    data = json.load(f)
+print(data.get("ssid", ""))
+PY
+)"
+    password="$(python3 - <<PY
+import json
+import sys
+with open("$CREDS_PATH", "r", encoding="utf-8") as f:
+    data = json.load(f)
+print(data.get("password", ""))
+PY
+)"
+
+    log "Received credentials for '$ssid'"
+
+    # Stop hotspot and switch back to managed mode
+    cleanup
+
+    if have_nmcli; then
+      if [[ -n "$password" ]]; then
+        if nmcli dev wifi connect "$ssid" password "$password" >/dev/null 2>&1; then
+          exit 0
+        fi
+      else
+        if nmcli dev wifi connect "$ssid" >/dev/null 2>&1; then
+          exit 0
+        fi
+      fi
+    fi
+
+    log "Failed to connect; restarting hotspot"
+    if have_nmcli; then
+      nmcli dev set "$HOTSPOT_IFACE" managed no >/dev/null 2>&1 || true
+    fi
+    start_hotspot
+    python3 "$SCRIPT_DIR/wifi_portal.py" --port "$PORTAL_PORT" --interface "$HOTSPOT_IFACE" --ssid "$HOTSPOT_SSID" --dns-ip "$HOTSPOT_IP_ADDR" --no-dns --out "$CREDS_PATH" &
+    PORTAL_PID=$!
   fi
 
   NOW=$(date +%s)

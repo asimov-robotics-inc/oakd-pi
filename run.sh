@@ -10,8 +10,7 @@ sudo cp "$SCRIPT_DIR/systemd/oakd-upload.service" /etc/systemd/system/
 sudo cp "$SCRIPT_DIR/systemd/oakd-upload.path" /etc/systemd/system/
 sudo install -d /etc/NetworkManager/dispatcher.d
 sudo install -m 755 "$SCRIPT_DIR/systemd/NetworkManager/dispatcher.d/90-oakd-upload" /etc/NetworkManager/dispatcher.d/90-oakd-upload
-sudo install -d /etc/NetworkManager/dnsmasq.d
-sudo install -m 644 "$SCRIPT_DIR/systemd/NetworkManager/dnsmasq.d/oakd-captive.conf" /etc/NetworkManager/dnsmasq.d/oakd-captive.conf
+sudo rm -f /etc/NetworkManager/dnsmasq.d/oakd-captive.conf
 sudo systemctl daemon-reload
 
 echo "==> enabling and starting services"
