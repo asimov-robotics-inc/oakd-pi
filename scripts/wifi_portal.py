@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 import argparse
 import html
+import socket
+import struct
 import subprocess
+import threading
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -51,6 +54,19 @@ class WifiPortalHandler(BaseHTTPRequestHandler):
         self.wfile.write(body_bytes)
 
     def do_GET(self) -> None:
+        captive_paths = {
+            "/hotspot-detect.html",  # Apple
+            "/generate_204",         # Android
+            "/gen_204",
+            "/ncsi.txt",             # Windows
+            "/connecttest.txt",      # Windows
+        }
+        if self.path in captive_paths:
+            self.send_response(302)
+            self.send_header("Location", "/")
+            self.end_headers()
+            return
+
         if self.path not in ("/", "/index.html"):
             self._send("Not Found", status=404)
             return
@@ -133,6 +149,53 @@ class WifiPortalHandler(BaseHTTPRequestHandler):
             self._send(f"<h3>Failed to connect:</h3><pre>{err}</pre>")
 
 
+class DnsHijackServer(threading.Thread):
+    def __init__(self, ip: str, port: int = 53):
+        super().__init__(daemon=True)
+        self.ip = ip
+        self.port = port
+        self.sock = None
+
+    def run(self) -> None:
+        try:
+            self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.sock.bind(("0.0.0.0", self.port))
+        except Exception as exc:
+            print(f"DNS server failed to start: {exc}")
+            return
+
+        while True:
+            try:
+                data, addr = self.sock.recvfrom(512)
+                if len(data) < 12:
+                    continue
+                tid = data[:2]
+                flags = b"\x81\x80"
+                qdcount = data[4:6]
+                ancount = qdcount
+                nscount = b"\x00\x00"
+                arcount = b"\x00\x00"
+
+                # Parse question section
+                idx = 12
+                while idx < len(data) and data[idx] != 0:
+                    idx += 1 + data[idx]
+                idx += 1  # null terminator
+                idx += 4  # QTYPE + QCLASS
+                if idx > len(data):
+                    continue
+                question = data[12:idx]
+
+                # Answer: pointer to name (0xC00C), type A, class IN, TTL, RDLENGTH, RDATA
+                answer = b"\xc0\x0c" + b"\x00\x01" + b"\x00\x01" + b"\x00\x00\x00\x3c" + b"\x00\x04"
+                answer += socket.inet_aton(self.ip)
+
+                resp = tid + flags + qdcount + ancount + nscount + arcount + question + answer
+                self.sock.sendto(resp, addr)
+            except Exception:
+                continue
+
+
 class WifiPortalServer(HTTPServer):
     def __init__(self, server_address, handler_class, interface: str):
         super().__init__(server_address, handler_class)
@@ -145,7 +208,10 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=80)
     parser.add_argument("--interface", default="wlan0")
     parser.add_argument("--ssid", default="oakd-setup")
+    parser.add_argument("--dns-ip", default="192.168.4.1")
     args = parser.parse_args()
+
+    DnsHijackServer(args.dns_ip).start()
 
     server = WifiPortalServer((args.host, args.port), WifiPortalHandler, args.interface)
     print(f"Wi-Fi portal running on {args.host}:{args.port} (hotspot: {args.ssid})")

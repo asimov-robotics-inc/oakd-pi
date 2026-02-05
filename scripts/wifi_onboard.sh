@@ -8,6 +8,7 @@ HOTSPOT_SSID="${WIFI_HOTSPOT_SSID:-recording-device-setup}"
 HOTSPOT_PASS="${WIFI_HOTSPOT_PASS:-}"
 HOTSPOT_IFACE="${WIFI_HOTSPOT_IFACE:-wlan0}"
 PORTAL_PORT="${WIFI_PORTAL_PORT:-80}"
+HOTSPOT_IP="${WIFI_HOTSPOT_IP:-192.168.4.1/24}"
 
 log() {
   echo "[wifi-onboard] $*"
@@ -92,8 +93,16 @@ else
   HOTSPOT_CONN="$HOTSPOT_SSID"
 fi
 
+# Force a known hotspot IP so the portal URL is stable
+if [[ -n "$HOTSPOT_CONN" ]]; then
+  nmcli con modify "$HOTSPOT_CONN" ipv4.addresses "$HOTSPOT_IP" ipv4.method shared ipv6.method ignore >/dev/null 2>&1 || true
+  nmcli con down "$HOTSPOT_CONN" >/dev/null 2>&1 || true
+  nmcli con up "$HOTSPOT_CONN" >/dev/null 2>&1 || true
+fi
+
 log "Launching captive portal on port $PORTAL_PORT"
-python3 "$SCRIPT_DIR/wifi_portal.py" --port "$PORTAL_PORT" --interface "$HOTSPOT_IFACE" --ssid "$HOTSPOT_SSID" &
+PORTAL_IP="${HOTSPOT_IP%/*}"
+python3 "$SCRIPT_DIR/wifi_portal.py" --port "$PORTAL_PORT" --interface "$HOTSPOT_IFACE" --ssid "$HOTSPOT_SSID" --dns-ip "$PORTAL_IP" &
 PORTAL_PID=$!
 
 START_TS=$(date +%s)
