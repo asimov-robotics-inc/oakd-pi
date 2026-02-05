@@ -156,6 +156,12 @@ class WifiPortalHandler(BaseHTTPRequestHandler):
         border-radius: 10px;
         font-size: 14px;
         background: #f9fafb;
+        box-sizing: border-box;
+        appearance: none;
+        -webkit-appearance: none;
+      }}
+      select {{
+        display: block;
       }}
       button {{
         width: 100%;

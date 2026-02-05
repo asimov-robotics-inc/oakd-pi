@@ -67,9 +67,30 @@ write_scan_cache() {
     return
   fi
   nmcli radio wifi on >/dev/null 2>&1 || true
-  nmcli dev wifi rescan ifname "$HOTSPOT_IFACE" >/dev/null 2>&1 || true
-  sleep 2
-  nmcli -t -f SSID,SECURITY,SIGNAL dev wifi list ifname "$HOTSPOT_IFACE" > /tmp/oakd-wifi-scan.txt || true
+  nmcli dev set "$HOTSPOT_IFACE" managed yes >/dev/null 2>&1 || true
+
+  for _ in {1..10}; do
+    state="$(nmcli -t -f DEVICE,STATE dev 2>/dev/null | awk -F: -v iface="$HOTSPOT_IFACE" '$1==iface {print $2}')"
+    if [[ -n "$state" && "$state" != "unavailable" ]]; then
+      break
+    fi
+    sleep 1
+  done
+
+  scan_raw=""
+  for _ in {1..6}; do
+    nmcli dev wifi rescan ifname "$HOTSPOT_IFACE" >/dev/null 2>&1 || true
+    sleep 2
+    scan_raw="$(nmcli -t -f SSID,SECURITY,SIGNAL dev wifi list ifname "$HOTSPOT_IFACE" 2>/dev/null || true)"
+    if [[ -n "$scan_raw" ]]; then
+      break
+    fi
+  done
+  if [[ -z "$scan_raw" ]]; then
+    scan_raw="$(nmcli -t -f SSID,SECURITY,SIGNAL dev wifi list 2>/dev/null || true)"
+  fi
+
+  printf '%s\n' "$scan_raw" > /tmp/oakd-wifi-scan.txt
   python3 - <<PY
 import json
 from pathlib import Path
@@ -96,7 +117,15 @@ for line in raw.splitlines():
         }
 
 out = sorted(networks.values(), key=lambda x: x["signal"], reverse=True)
-Path("$SCAN_CACHE").write_text(json.dumps(out), encoding="utf-8")
+cache_path = Path("$SCAN_CACHE")
+if not out and cache_path.exists():
+    try:
+        old = json.loads(cache_path.read_text(encoding="utf-8"))
+        if isinstance(old, list) and old:
+            raise SystemExit(0)
+    except Exception:
+        pass
+cache_path.write_text(json.dumps(out), encoding="utf-8")
 PY
 }
 
@@ -182,7 +211,10 @@ hw_mode=g
 channel=6
 auth_algs=1
 ignore_broadcast_ssid=0
-wmm_enabled=0
+country_code=US
+ieee80211d=1
+ieee80211n=1
+wmm_enabled=1
 EOF
 
   if [[ -n "$HOTSPOT_PASS" && ${#HOTSPOT_PASS} -ge 8 ]]; then
@@ -206,8 +238,8 @@ no-resolv
 no-hosts
 EOF
 
-  hostapd -B -P "$HOSTAPD_PID" "$HOSTAPD_CONF" >/dev/null 2>&1
-  dnsmasq --conf-file="$DNSMASQ_CONF" --pid-file="$DNSMASQ_PID" >/dev/null 2>&1
+  hostapd -B -P "$HOSTAPD_PID" -f /tmp/oakd-hostapd.log "$HOSTAPD_CONF" >/dev/null 2>&1
+  dnsmasq --conf-file="$DNSMASQ_CONF" --pid-file="$DNSMASQ_PID" --log-facility=/tmp/oakd-dnsmasq.log >/dev/null 2>&1
 }
 
 stop_hotspot() {
