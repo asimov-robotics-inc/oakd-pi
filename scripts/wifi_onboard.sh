@@ -304,22 +304,25 @@ PY
     stop_hotspot
 
     if have_nmcli; then
-      if [[ -n "$password" ]]; then
-        err="$(nmcli dev wifi connect "$ssid" password "$password" 2>&1)" && ok=1 || ok=0
+      nmcli radio wifi on >/dev/null 2>&1 || true
+      ok=0
+      for _ in {1..3}; do
+        nmcli dev wifi rescan ifname "$HOTSPOT_IFACE" >/dev/null 2>&1 || true
+        sleep 2
+        if [[ -n "$password" ]]; then
+          err="$(nmcli --wait 15 dev wifi connect "$ssid" password "$password" 2>&1)" && ok=1 || ok=0
+        else
+          err="$(nmcli --wait 15 dev wifi connect "$ssid" 2>&1)" && ok=1 || ok=0
+        fi
         if [[ "$ok" -eq 1 ]]; then
           CONNECTED=1
           write_status "success" "Connected to $ssid"
           log "Connected to $ssid (portal will stay up until timeout)"
-          continue
+          break
         fi
-      else
-        err="$(nmcli dev wifi connect "$ssid" 2>&1)" && ok=1 || ok=0
-        if [[ "$ok" -eq 1 ]]; then
-          CONNECTED=1
-          write_status "success" "Connected to $ssid"
-          log "Connected to $ssid (portal will stay up until timeout)"
-          continue
-        fi
+      done
+      if [[ "$ok" -eq 1 ]]; then
+        continue
       fi
     fi
 
