@@ -36,13 +36,19 @@ wifi_connected() {
 }
 
 remove_existing_hotspot() {
-  nmcli -t -f NAME,TYPE,802-11-wireless.ssid con show 2>/dev/null | \
-    awk -F: -v ssid="$HOTSPOT_SSID" '$2=="802-11-wireless" && $3==ssid {print $1}' | \
+  set +e
+  nmcli -t -f NAME,TYPE con show 2>/dev/null | \
+    awk -F: '$2=="802-11-wireless" {print $1}' | \
     while read -r name; do
-      if [[ -n "$name" ]]; then
+      if [[ -z "$name" ]]; then
+        continue
+      fi
+      ssid="$(nmcli -g 802-11-wireless.ssid con show "$name" 2>/dev/null | head -n1)"
+      if [[ "$ssid" == "$HOTSPOT_SSID" ]]; then
         nmcli con delete "$name" >/dev/null 2>&1 || true
       fi
     done
+  set -e
 }
 
 cleanup() {
