@@ -5,7 +5,15 @@ RECORDINGS_DIR="${OAKD_RECORDINGS_DIR:-/home/pi/recordings}"
 S3_BUCKET="${S3_BUCKET:-}"
 S3_PREFIX="${S3_PREFIX:-oakd-recordings}"
 S3_REGION="${S3_REGION:-us-east-1}"
-DEVICE_ID="${S3_DEVICE_ID:-$(hostname)}"
+if [[ -n "${S3_DEVICE_ID:-}" ]]; then
+  DEVICE_ID="$S3_DEVICE_ID"
+else
+  DEVICE_ID="$(hostname)"
+  if [[ "$DEVICE_ID" == "raspberrypi" && -r /etc/machine-id ]]; then
+    DEVICE_ID="$(tr -d '\n' < /etc/machine-id)"
+  fi
+fi
+DEVICE_ID="${DEVICE_ID// /_}"
 
 log() {
   echo "[s3-upload] $*"

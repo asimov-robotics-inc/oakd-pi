@@ -128,6 +128,7 @@ AWS_SECRET_ACCESS_KEY=...
 See `docs/s3.env.example` for a template.
 
 Uploads use `rclone` with move semantics (upload then delete). If Wi-Fi is not connected, uploads are skipped.
+By default uploads go to `s3://$S3_BUCKET/$S3_PREFIX/<device-id>/...` where `<device-id>` is the hostname. If the hostname is `raspberrypi`, the uploader falls back to `/etc/machine-id`. You can always override with `S3_DEVICE_ID`.
 
 ## Recordings
 

@@ -116,6 +116,8 @@ AWS_SECRET_ACCESS_KEY=...
 
 Template: `docs/s3.env.example`.
 
+Uploads are stored under `s3://$S3_BUCKET/$S3_PREFIX/<device-id>/...`. If you keep the default hostname (`raspberrypi`) on multiple Pis, set `S3_DEVICE_ID` to avoid collisions.
+
 ## 4.4 Updating the Pi
 
 If you pull new code changes on the Pi, stop the service first, then update, then restart.
