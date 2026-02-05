@@ -64,6 +64,21 @@ class WifiPortalHandler(BaseHTTPRequestHandler):
         self.wfile.write(body_bytes)
 
     def do_GET(self) -> None:
+        if self.path == "/status":
+            status = {"state": "idle"}
+            if self.server.status_path:
+                try:
+                    with open(self.server.status_path, "r", encoding="utf-8") as f:
+                        status = json.load(f)
+                except Exception:
+                    status = {"state": "idle"}
+            body = json.dumps(status).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         captive_paths = {
             "/hotspot-detect.html",  # Apple
             "/generate_204",         # Android
@@ -148,7 +163,50 @@ class WifiPortalHandler(BaseHTTPRequestHandler):
         try:
             with open(self.server.creds_path, "w", encoding="utf-8") as f:
                 json.dump({"ssid": ssid, "password": password}, f)
-            self._send("<h3>Credentials received. You can close this page.</h3>")
+            if self.server.status_path:
+                with open(self.server.status_path, "w", encoding="utf-8") as f:
+                    json.dump({"state": "received", "message": "Credentials received"}, f)
+            page = f"""
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Connecting...</title>
+    <style>
+      body {{ font-family: Arial, sans-serif; margin: 24px; }}
+      .card {{ max-width: 420px; margin: 0 auto; }}
+      .status {{ margin-top: 12px; }}
+      a {{ display: inline-block; margin-top: 12px; }}
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h2>Connecting to {html.escape(ssid)}</h2>
+      <div class="status" id="status">Attempting to connect...</div>
+      <a href="/" id="retry" style="display:none;">Try again</a>
+      <p>If connection succeeds, this hotspot will disappear.</p>
+    </div>
+    <script>
+      async function poll() {{
+        try {{
+          const res = await fetch('/status', {{cache: 'no-store'}});
+          const data = await res.json();
+          if (data.state === 'success') {{
+            document.getElementById('status').textContent = data.message || 'Connected.';
+          }} else if (data.state === 'failed') {{
+            document.getElementById('status').textContent = data.message || 'Failed to connect.';
+            document.getElementById('retry').style.display = 'inline-block';
+          }}
+        }} catch (e) {{}}
+      }}
+      setInterval(poll, 2000);
+      poll();
+    </script>
+  </body>
+</html>
+"""
+            self._send(page)
         except Exception as exc:
             err = html.escape(str(exc))
             self._send(f"<h3>Failed to save credentials:</h3><pre>{err}</pre>")
@@ -202,11 +260,20 @@ class DnsHijackServer(threading.Thread):
 
 
 class WifiPortalServer(HTTPServer):
-    def __init__(self, server_address, handler_class, interface: str, creds_path: str, scan_cache: str | None):
+    def __init__(
+        self,
+        server_address,
+        handler_class,
+        interface: str,
+        creds_path: str,
+        scan_cache: str | None,
+        status_path: str | None,
+    ):
         super().__init__(server_address, handler_class)
         self.interface = interface
         self.creds_path = creds_path
         self.scan_cache = scan_cache
+        self.status_path = status_path
 
 
 def main() -> None:
@@ -219,12 +286,20 @@ def main() -> None:
     parser.add_argument("--no-dns", action="store_true")
     parser.add_argument("--out", default="/tmp/oakd-wifi-creds.json")
     parser.add_argument("--scan-cache", default=None)
+    parser.add_argument("--status", default="/tmp/oakd-wifi-status.json")
     args = parser.parse_args()
 
     if not args.no_dns:
         DnsHijackServer(args.dns_ip).start()
 
-    server = WifiPortalServer((args.host, args.port), WifiPortalHandler, args.interface, args.out, args.scan_cache)
+    server = WifiPortalServer(
+        (args.host, args.port),
+        WifiPortalHandler,
+        args.interface,
+        args.out,
+        args.scan_cache,
+        args.status,
+    )
     print(f"Wi-Fi portal running on {args.host}:{args.port} (hotspot: {args.ssid})")
     server.serve_forever()
 

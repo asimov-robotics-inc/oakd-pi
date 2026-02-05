@@ -11,6 +11,7 @@ PORTAL_PORT="${WIFI_PORTAL_PORT:-80}"
 HOTSPOT_IP="${WIFI_HOTSPOT_IP:-192.168.4.1/24}"
 HOTSPOT_IP_ADDR="${HOTSPOT_IP%/*}"
 CREDS_PATH="${WIFI_CREDS_PATH:-/tmp/oakd-wifi-creds.json}"
+STATUS_PATH="${WIFI_STATUS_PATH:-/tmp/oakd-wifi-status.json}"
 HOSTAPD_CONF="/tmp/oakd-hostapd.conf"
 DNSMASQ_CONF="/tmp/oakd-dnsmasq.conf"
 HOSTAPD_PID="/tmp/oakd-hostapd.pid"
@@ -111,7 +112,7 @@ cleanup() {
   if [[ -f "$DNSMASQ_PID" ]]; then
     kill "$(cat "$DNSMASQ_PID")" >/dev/null 2>&1 || true
   fi
-  rm -f "$HOSTAPD_PID" "$DNSMASQ_PID" "$HOSTAPD_CONF" "$DNSMASQ_CONF" "$CREDS_PATH"
+  rm -f "$HOSTAPD_PID" "$DNSMASQ_PID" "$HOSTAPD_CONF" "$DNSMASQ_CONF" "$CREDS_PATH" "$STATUS_PATH"
 
   if [[ -n "$DNSMASQ_SYSTEM_STOPPED" ]]; then
     systemctl start dnsmasq >/dev/null 2>&1 || true
@@ -124,6 +125,21 @@ cleanup() {
   if have_nmcli; then
     nmcli dev set "$HOTSPOT_IFACE" managed yes >/dev/null 2>&1 || true
   fi
+}
+
+write_status() {
+  local state="$1"
+  local message="${2:-}"
+  python3 - <<PY
+import json
+from pathlib import Path
+
+payload = {"state": "$state"}
+if "$message":
+    payload["message"] = "$message"
+
+Path("$STATUS_PATH").write_text(json.dumps(payload), encoding="utf-8")
+PY
 }
 
 trap cleanup EXIT
@@ -194,6 +210,20 @@ EOF
   dnsmasq --conf-file="$DNSMASQ_CONF" --pid-file="$DNSMASQ_PID" >/dev/null 2>&1
 }
 
+stop_hotspot() {
+  if [[ -f "$HOSTAPD_PID" ]]; then
+    kill "$(cat "$HOSTAPD_PID")" >/dev/null 2>&1 || true
+  fi
+  if [[ -f "$DNSMASQ_PID" ]]; then
+    kill "$(cat "$DNSMASQ_PID")" >/dev/null 2>&1 || true
+  fi
+  rm -f "$HOSTAPD_PID" "$DNSMASQ_PID"
+  ip addr flush dev "$HOTSPOT_IFACE" >/dev/null 2>&1 || true
+  if have_nmcli; then
+    nmcli dev set "$HOTSPOT_IFACE" managed yes >/dev/null 2>&1 || true
+  fi
+}
+
 start_hotspot
 
 log "Launching captive portal on port $PORTAL_PORT"
@@ -204,8 +234,10 @@ python3 "$SCRIPT_DIR/wifi_portal.py" \
   --dns-ip "$HOTSPOT_IP_ADDR" \
   --no-dns \
   --out "$CREDS_PATH" \
+  --status "$STATUS_PATH" \
   --scan-cache "$SCAN_CACHE" &
 PORTAL_PID=$!
+write_status "idle"
 
 START_TS=$(date +%s)
 while true; do
@@ -227,30 +259,42 @@ print(data.get("password", ""))
 PY
 )"
 
+    rm -f "$CREDS_PATH" || true
+
     log "Received credentials for '$ssid'"
+    write_status "connecting" "Attempting to connect..."
+    err=""
 
     # Stop hotspot and switch back to managed mode
-    cleanup
+    stop_hotspot
 
     if have_nmcli; then
       if [[ -n "$password" ]]; then
-        if nmcli dev wifi connect "$ssid" password "$password" >/dev/null 2>&1; then
+        err="$(nmcli dev wifi connect "$ssid" password "$password" 2>&1)" && ok=1 || ok=0
+        if [[ "$ok" -eq 1 ]]; then
+          write_status "success" "Connected to $ssid"
           exit 0
         fi
       else
-        if nmcli dev wifi connect "$ssid" >/dev/null 2>&1; then
+        err="$(nmcli dev wifi connect "$ssid" 2>&1)" && ok=1 || ok=0
+        if [[ "$ok" -eq 1 ]]; then
+          write_status "success" "Connected to $ssid"
           exit 0
         fi
       fi
     fi
 
+    if [[ -n "$err" ]]; then
+      write_status "failed" "$err"
+    else
+      write_status "failed" "Failed to connect. Check password or try another network."
+    fi
     log "Failed to connect; restarting hotspot"
     if have_nmcli; then
       nmcli dev set "$HOTSPOT_IFACE" managed no >/dev/null 2>&1 || true
     fi
     start_hotspot
-    python3 "$SCRIPT_DIR/wifi_portal.py" --port "$PORTAL_PORT" --interface "$HOTSPOT_IFACE" --ssid "$HOTSPOT_SSID" --dns-ip "$HOTSPOT_IP_ADDR" --no-dns --out "$CREDS_PATH" --scan-cache "$SCAN_CACHE" &
-    PORTAL_PID=$!
+    # portal already running; leave it up
   fi
 
   NOW=$(date +%s)

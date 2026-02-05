@@ -96,6 +96,7 @@ On boot, the Pi can open a temporary Wi-Fi hotspot for up to 5 minutes so you ca
 - Connect to the hotspot SSID `recording-device-setup` (open, no password).
 - A captive portal should open automatically.
 - If it doesn't, open `http://192.168.4.1`.
+- After you submit credentials, the portal will show **success** or **failure**. If it fails, you can retry.
 
 Once connected, credentials are saved and the hotspot stops.
 This flow uses `hostapd` + `dnsmasq` for the hotspot (default on Raspberry Pi OS Bookworm).
