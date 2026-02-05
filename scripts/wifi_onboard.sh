@@ -85,17 +85,9 @@ if [[ -n "$HOTSPOT_PASS" && ${#HOTSPOT_PASS} -ge 8 ]]; then
   nmcli dev wifi hotspot ifname "$HOTSPOT_IFACE" ssid "$HOTSPOT_SSID" password "$HOTSPOT_PASS" >/dev/null
   HOTSPOT_CONN="$(nmcli -t -f NAME,TYPE con show --active | awk -F: '$2=="wifi" {print $1; exit}')"
 else
-  # Create an open hotspot explicitly
+  # Create an open hotspot explicitly (no wifi-security settings)
   nmcli con add type wifi ifname "$HOTSPOT_IFACE" con-name "$HOTSPOT_SSID" ssid "$HOTSPOT_SSID" >/dev/null
   nmcli con modify "$HOTSPOT_SSID" 802-11-wireless.mode ap 802-11-wireless.band bg ipv4.method shared ipv6.method ignore >/dev/null
-  nmcli con modify "$HOTSPOT_SSID" 802-11-wireless-security.key-mgmt none >/dev/null
-  # Clear any WEP keys to ensure an open network
-  nmcli con modify "$HOTSPOT_SSID" 802-11-wireless-security.wep-key0 "" >/dev/null
-  nmcli con modify "$HOTSPOT_SSID" 802-11-wireless-security.wep-key1 "" >/dev/null
-  nmcli con modify "$HOTSPOT_SSID" 802-11-wireless-security.wep-key2 "" >/dev/null
-  nmcli con modify "$HOTSPOT_SSID" 802-11-wireless-security.wep-key3 "" >/dev/null
-  nmcli con modify "$HOTSPOT_SSID" 802-11-wireless-security.wep-key-type 0 >/dev/null
-  nmcli con modify "$HOTSPOT_SSID" 802-11-wireless-security.wep-tx-keyidx 0 >/dev/null
   nmcli con up "$HOTSPOT_SSID" >/dev/null
   HOTSPOT_CONN="$HOTSPOT_SSID"
 fi
