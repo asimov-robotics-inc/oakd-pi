@@ -100,6 +100,35 @@ Or if you're on the Pi directly, use the helper scripts:
 ./stop.sh   # stop + disable
 ```
 
+## Wi-Fi onboarding (optional)
+
+On boot, the Pi can open a temporary Wi-Fi hotspot for up to 5 minutes so you can enter credentials from your phone. The hotspot SSID is `oakd-setup`.
+
+- Connect to `oakd-setup` from your phone.
+- A captive portal should open automatically.
+- If it doesn't, open `http://192.168.4.1`.
+
+Once connected, the credentials are saved and the hotspot stops.
+This flow assumes NetworkManager (default on Raspberry Pi OS Bookworm).
+
+## S3 upload (optional)
+
+If Wi-Fi is connected and S3 credentials are configured, completed recording segments are uploaded to S3 and deleted locally to free space. Uploads only run when a `.done` marker exists for a segment.
+
+To enable uploads, create `/etc/oakd/s3.env` on the Pi:
+
+```bash
+S3_BUCKET=your-bucket
+S3_PREFIX=oakd-recordings
+S3_REGION=us-east-1
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+```
+
+See `docs/s3.env.example` for a template.
+
+Uploads use `rclone` with move semantics (upload then delete). If Wi-Fi is not connected, uploads are skipped.
+
 ## Recordings
 
 Saved to `~/recordings/YYYYMMDD_HHMMSS/` on the Pi (timestamps are UTC). The system
@@ -110,7 +139,8 @@ rotates to a new recording every 10 minutes for reliability.
 └── 20260130_143052/
     ├── recording_20260130_143052.mcap    # RGB + left/right mono + IMU
     ├── calibration_20260130_143052.json  # camera intrinsics/extrinsics
-    └── metadata_20260130_143052.json     # recording config + device info
+    ├── metadata_20260130_143052.json     # recording config + device info
+    └── .done                             # marker when a segment is fully closed
 ```
 
 MCAP payloads are raw binary — H.265 video frames (RGB), MJPEG frames (left/right mono), and 48-byte packed IMU structs (6 little-endian doubles: ax, ay, az, gx, gy, gz). The recording is fsynced to disk every 5 seconds to limit data loss on hard power cuts.

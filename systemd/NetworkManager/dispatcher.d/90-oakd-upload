@@ -1,0 +1,16 @@
+#!/bin/sh
+
+IFACE="$1"
+STATUS="$2"
+
+case "$STATUS" in
+  up|dhcp4-change|dhcp6-change)
+    if command -v nmcli >/dev/null 2>&1; then
+      if nmcli -t -f DEVICE,TYPE,STATE dev | grep -q "^${IFACE}:wifi:connected"; then
+        systemctl start oakd-upload.service
+      fi
+    fi
+    ;;
+  *)
+    ;;
+ esac

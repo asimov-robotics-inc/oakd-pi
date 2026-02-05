@@ -9,6 +9,14 @@ All notable changes to this project will be documented in this file.
 - Set IMU rate to 200Hz
 - Updated docs and metadata to reflect the new stream set
 
+## [0.5.4] - 2026-02-05
+
+### Added
+- Wi-Fi onboarding service with captive portal (5-minute window on boot)
+- Event-driven S3 uploader (uploads completed segments and deletes locally)
+- `.done` marker on segment close for safe uploads
+- rclone install in setup for S3 uploads
+
 ## [0.5.2] - 2026-02-01
 
 ### Changed

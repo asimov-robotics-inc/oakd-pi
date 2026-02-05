@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "==> stopping oakd-capture"
-sudo systemctl stop oakd-capture
+echo "==> stopping services"
+sudo systemctl stop oakd-capture || true
+sudo systemctl stop oakd-wifi-onboard || true
+sudo systemctl stop oakd-upload.path || true
 
-echo "==> disabling oakd-capture from boot"
-sudo systemctl disable oakd-capture
+echo "==> disabling services from boot"
+sudo systemctl disable oakd-capture || true
+sudo systemctl disable oakd-wifi-onboard || true
+sudo systemctl disable oakd-upload.path || true
 
-echo "==> oakd-capture stopped and disabled"
+echo "==> services stopped and disabled"

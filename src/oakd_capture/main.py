@@ -222,6 +222,32 @@ class CaptureApp:
         except Exception as e:
             log.warning(f"Failed to save metadata: {e}")
 
+    def _mark_recording_done(self) -> None:
+        """Mark the last recording as completed and update metadata."""
+        if not self._last_recording_dir or not self._last_recording_ts:
+            return
+
+        end_ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        done_path = self._last_recording_dir / ".done"
+        try:
+            if not done_path.exists():
+                done_path.write_text(end_ts, encoding="utf-8")
+                self._fsync_dir(self._last_recording_dir)
+        except Exception as e:
+            log.warning(f"Failed to write .done marker: {e}")
+
+        metadata_path = self._last_recording_dir / f"metadata_{self._last_recording_ts}.json"
+        if metadata_path.exists():
+            try:
+                with open(metadata_path, "r", encoding="utf-8") as f:
+                    metadata = json.load(f)
+                metadata["recording_end"] = end_ts
+                with open(metadata_path, "w", encoding="utf-8") as f:
+                    json.dump(metadata, f, indent=2)
+                self._fsync_dir(self._last_recording_dir)
+            except Exception as e:
+                log.warning(f"Failed to update metadata: {e}")
+
     def _fsync_dir(self, path: Path) -> None:
         """Force directory entry to disk so files survive hard power cuts."""
         try:
@@ -286,6 +312,7 @@ class CaptureApp:
         if self._recorder:
             self._recorder.close()
             self._recorder = None
+            self._mark_recording_done()
 
         log.info("Recording stopped")
 

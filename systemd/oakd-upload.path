@@ -1,0 +1,10 @@
+[Unit]
+Description=Watch for completed OAK-D recordings
+
+[Path]
+PathExistsGlob=/home/pi/recordings/*/.done
+PathChanged=/home/pi/recordings
+Unit=oakd-upload.service
+
+[Install]
+WantedBy=multi-user.target

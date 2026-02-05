@@ -1,0 +1,15 @@
+[Unit]
+Description=OAK-D S3 Uploader
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=pi
+EnvironmentFile=-/etc/oakd/s3.env
+ExecStart=/home/pi/oakd-pi/scripts/s3_upload.sh
+Nice=10
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=multi-user.target

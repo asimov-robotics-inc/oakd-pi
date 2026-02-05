@@ -1,0 +1,14 @@
+[Unit]
+Description=OAK-D Wi-Fi Onboarding (captive portal)
+After=network.target NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=oneshot
+ExecStart=/home/pi/oakd-pi/scripts/wifi_onboard.sh
+TimeoutStartSec=300
+Nice=10
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=multi-user.target
