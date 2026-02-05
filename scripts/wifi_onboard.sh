@@ -19,6 +19,7 @@ DNSMASQ_PID="/tmp/oakd-dnsmasq.pid"
 PORTAL_PID=""
 DNSMASQ_SYSTEM_STOPPED=""
 SCAN_CACHE="/tmp/oakd-wifi-scan.json"
+CONNECTED=0
 
 log() {
   echo "[wifi-onboard] $*"
@@ -147,12 +148,14 @@ cleanup() {
     systemctl start dnsmasq >/dev/null 2>&1 || true
   fi
 
-  ip addr flush dev "$HOTSPOT_IFACE" >/dev/null 2>&1 || true
-  ip link set "$HOTSPOT_IFACE" down >/dev/null 2>&1 || true
-  ip link set "$HOTSPOT_IFACE" up >/dev/null 2>&1 || true
+  if [[ "$CONNECTED" -eq 0 ]]; then
+    ip addr flush dev "$HOTSPOT_IFACE" >/dev/null 2>&1 || true
+    ip link set "$HOTSPOT_IFACE" down >/dev/null 2>&1 || true
+    ip link set "$HOTSPOT_IFACE" up >/dev/null 2>&1 || true
 
-  if have_nmcli; then
-    nmcli dev set "$HOTSPOT_IFACE" managed yes >/dev/null 2>&1 || true
+    if have_nmcli; then
+      nmcli dev set "$HOTSPOT_IFACE" managed yes >/dev/null 2>&1 || true
+    fi
   fi
 }
 
@@ -304,14 +307,18 @@ PY
       if [[ -n "$password" ]]; then
         err="$(nmcli dev wifi connect "$ssid" password "$password" 2>&1)" && ok=1 || ok=0
         if [[ "$ok" -eq 1 ]]; then
+          CONNECTED=1
           write_status "success" "Connected to $ssid"
-          exit 0
+          log "Connected to $ssid (portal will stay up until timeout)"
+          continue
         fi
       else
         err="$(nmcli dev wifi connect "$ssid" 2>&1)" && ok=1 || ok=0
         if [[ "$ok" -eq 1 ]]; then
+          CONNECTED=1
           write_status "success" "Connected to $ssid"
-          exit 0
+          log "Connected to $ssid (portal will stay up until timeout)"
+          continue
         fi
       fi
     fi
