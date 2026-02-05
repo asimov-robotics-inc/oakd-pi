@@ -98,12 +98,11 @@ class WifiPortalHandler(BaseHTTPRequestHandler):
 
         networks = scan_networks(self.server.scan_cache)
         options = [
-            f"<option value=\"{html.escape(n['ssid'])}\">"
-            f"{html.escape(n['ssid'])} ({n['signal']}%, {html.escape(n['security'])})"
-            "</option>"
+            f"<option value=\"{html.escape(n['ssid'])}\">{html.escape(n['ssid'])}</option>"
             for n in networks
         ]
-        options_html = "\n".join(options) if options else "<option>(no networks found)</option>"
+        options_html = "\n".join(options) if options else "<option value=\"\">(no networks found)</option>"
+        has_networks = "true" if options else "false"
 
         page = f"""
 <!doctype html>
@@ -111,35 +110,110 @@ class WifiPortalHandler(BaseHTTPRequestHandler):
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>OAK-D Wi-Fi Setup</title>
+    <title>Wi-Fi Setup</title>
     <style>
-      body {{ font-family: Arial, sans-serif; margin: 24px; }}
-      .card {{ max-width: 420px; margin: 0 auto; }}
-      label {{ display: block; margin-top: 12px; font-weight: bold; }}
-      input, select, button {{ width: 100%; padding: 10px; margin-top: 6px; }}
-      button {{ margin-top: 16px; }}
-      .note {{ font-size: 12px; color: #555; margin-top: 8px; }}
+      body {{
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+        margin: 0;
+        background: linear-gradient(180deg, #f7f8fb, #eef1f6);
+        color: #1f2937;
+      }}
+      .wrap {{
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+      }}
+      .card {{
+        width: 100%;
+        max-width: 420px;
+        background: #ffffff;
+        border-radius: 16px;
+        padding: 24px;
+        box-shadow: 0 10px 30px rgba(31, 41, 55, 0.12);
+      }}
+      h2 {{
+        margin: 0 0 8px 0;
+        font-size: 20px;
+      }}
+      .subtitle {{
+        margin: 0 0 20px 0;
+        font-size: 13px;
+        color: #6b7280;
+      }}
+      label {{
+        display: block;
+        margin-top: 12px;
+        font-weight: 600;
+        font-size: 13px;
+      }}
+      select, input {{
+        width: 100%;
+        padding: 12px;
+        margin-top: 6px;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        font-size: 14px;
+        background: #f9fafb;
+      }}
+      button {{
+        width: 100%;
+        padding: 12px;
+        margin-top: 16px;
+        border: 0;
+        border-radius: 10px;
+        font-size: 15px;
+        font-weight: 600;
+        color: #fff;
+        background: #2563eb;
+      }}
+      button:disabled {{
+        background: #94a3b8;
+      }}
+      .note {{
+        font-size: 12px;
+        color: #6b7280;
+        margin-top: 8px;
+      }}
+      .refresh {{
+        display: inline-block;
+        margin-top: 6px;
+        font-size: 12px;
+        color: #2563eb;
+        text-decoration: none;
+      }}
     </style>
   </head>
   <body>
-    <div class="card">
-      <h2>Connect OAK-D Pi to Wi-Fi</h2>
-      <form method="POST" action="/connect">
-        <label for="ssid">Select network</label>
-        <select name="ssid" id="ssid">
-          {options_html}
-        </select>
+    <div class="wrap">
+      <div class="card">
+        <h2>Connect to Wi‑Fi</h2>
+        <p class="subtitle">Choose a network and enter the password.</p>
+        <form method="POST" action="/connect">
+          <label for="ssid">Select network</label>
+          <select name="ssid" id="ssid">
+            {options_html}
+          </select>
 
-        <label for="ssid_manual">Or enter SSID</label>
-        <input type="text" id="ssid_manual" name="ssid_manual" placeholder="Hidden network SSID" />
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" placeholder="Leave blank if open" />
 
-        <label for="password">Password</label>
-        <input type="password" id="password" name="password" placeholder="Wi-Fi password" />
-
-        <button type="submit">Connect</button>
-      </form>
-      <p class="note">If the list is empty, use the manual SSID field or reload after a minute.</p>
+          <button id="connect" type="submit">Connect</button>
+        </form>
+        <p class="note">If you don't see your network, wait a moment and refresh.</p>
+        <a class="refresh" href="/">Refresh list</a>
+      </div>
     </div>
+    <script>
+      const hasNetworks = {has_networks};
+      const btn = document.getElementById('connect');
+      const sel = document.getElementById('ssid');
+      if (!hasNetworks) {{
+        btn.disabled = true;
+        sel.disabled = true;
+      }}
+    </script>
   </body>
 </html>
 """
@@ -153,7 +227,7 @@ class WifiPortalHandler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", "0"))
         body = self.rfile.read(length).decode("utf-8")
         params = urllib.parse.parse_qs(body)
-        ssid = (params.get("ssid_manual") or params.get("ssid") or [""])[0].strip()
+        ssid = (params.get("ssid") or [""])[0].strip()
         password = (params.get("password") or [""])[0]
 
         if not ssid:
