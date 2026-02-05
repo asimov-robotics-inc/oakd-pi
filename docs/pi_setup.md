@@ -98,7 +98,7 @@ On boot, the Pi can open a temporary Wi-Fi hotspot for up to 5 minutes so you ca
 - If it doesn't, open `http://192.168.4.1`.
 
 Once connected, credentials are saved and the hotspot stops.
-This flow assumes NetworkManager (default on Raspberry Pi OS Bookworm).
+This flow uses `hostapd` + `dnsmasq` for the hotspot (default on Raspberry Pi OS Bookworm).
 
 ## 4.3 S3 Uploads (optional)
 

@@ -17,6 +17,11 @@ All notable changes to this project will be documented in this file.
 - `.done` marker on segment close for safe uploads
 - rclone install in setup for S3 uploads
 
+## [0.5.5] - 2026-02-05
+
+### Changed
+- Switched Wi-Fi onboarding hotspot to hostapd + dnsmasq for reliable captive portal auto-open
+
 ## [0.5.2] - 2026-02-01
 
 ### Changed
