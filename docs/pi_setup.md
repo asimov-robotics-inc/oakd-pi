@@ -93,7 +93,7 @@ journalctl -u oakd-capture -f
 
 On boot, the Pi can open a temporary Wi-Fi hotspot for up to 5 minutes so you can enter credentials from your phone.
 
-- Connect to the hotspot SSID `recording-device-setup` and enter the password `recording-device-setup`.
+- Connect to the hotspot SSID `recording-device-setup` (open, no password).
 - A captive portal should open automatically.
 - If it doesn't, open `http://192.168.4.1`.
 
