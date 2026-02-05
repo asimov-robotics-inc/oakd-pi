@@ -77,18 +77,14 @@ remove_existing_hotspot
 log "Starting hotspot '$HOTSPOT_SSID' on $HOTSPOT_IFACE"
 if [[ -n "$HOTSPOT_PASS" && ${#HOTSPOT_PASS} -ge 8 ]]; then
   nmcli dev wifi hotspot ifname "$HOTSPOT_IFACE" ssid "$HOTSPOT_SSID" password "$HOTSPOT_PASS" >/dev/null
+  HOTSPOT_CONN="$(nmcli -t -f NAME,TYPE con show --active | awk -F: '$2=="wifi" {print $1; exit}')"
 else
-  nmcli dev wifi hotspot ifname "$HOTSPOT_IFACE" ssid "$HOTSPOT_SSID" >/dev/null
-fi
-
-HOTSPOT_CONN="$(nmcli -t -f NAME,TYPE con show --active | awk -F: '$2=="wifi" {print $1; exit}')"
-
-if [[ -z "$HOTSPOT_PASS" || ${#HOTSPOT_PASS} -lt 8 ]]; then
-  # Ensure the hotspot is open (no security)
-  nmcli con modify "$HOTSPOT_CONN" 802-11-wireless-security.key-mgmt none >/dev/null 2>&1 || true
-  nmcli con modify "$HOTSPOT_CONN" 802-11-wireless-security.psk "" >/dev/null 2>&1 || true
-  nmcli con down "$HOTSPOT_CONN" >/dev/null 2>&1 || true
-  nmcli con up "$HOTSPOT_CONN" >/dev/null 2>&1 || true
+  # Create an open hotspot explicitly
+  nmcli con add type wifi ifname "$HOTSPOT_IFACE" con-name "$HOTSPOT_SSID" ssid "$HOTSPOT_SSID" >/dev/null
+  nmcli con modify "$HOTSPOT_SSID" 802-11-wireless.mode ap 802-11-wireless.band bg ipv4.method shared ipv6.method ignore >/dev/null
+  nmcli con modify "$HOTSPOT_SSID" 802-11-wireless-security.key-mgmt none >/dev/null
+  nmcli con up "$HOTSPOT_SSID" >/dev/null
+  HOTSPOT_CONN="$HOTSPOT_SSID"
 fi
 
 log "Launching captive portal on port $PORTAL_PORT"
