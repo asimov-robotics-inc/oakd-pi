@@ -17,8 +17,22 @@ have_nmcli() {
   command -v nmcli >/dev/null 2>&1
 }
 
+active_wifi_conn() {
+  nmcli -t -f NAME,TYPE,DEVICE con show --active 2>/dev/null | awk -F: '$2=="802-11-wireless" {print $1; exit}'
+}
+
 wifi_connected() {
-  nmcli -t -f DEVICE,TYPE,STATE dev 2>/dev/null | grep -q ":wifi:connected"
+  local conn
+  conn="$(active_wifi_conn)"
+  if [[ -z "$conn" ]]; then
+    return 1
+  fi
+  local mode
+  mode="$(nmcli -t -f 802-11-wireless.mode con show "$conn" 2>/dev/null | cut -d: -f2)"
+  if [[ "$mode" == "ap" ]]; then
+    return 1
+  fi
+  return 0
 }
 
 cleanup() {
