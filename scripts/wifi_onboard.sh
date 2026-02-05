@@ -242,7 +242,7 @@ no-hosts
 EOF
 
   hostapd -B -P "$HOSTAPD_PID" -f /tmp/oakd-hostapd.log "$HOSTAPD_CONF" >/dev/null 2>&1
-  dnsmasq --conf-file="$DNSMASQ_CONF" --pid-file="$DNSMASQ_PID" --log-facility=/tmp/oakd-dnsmasq.log >/dev/null 2>&1
+  dnsmasq --conf-file="$DNSMASQ_CONF" --pid-file="$DNSMASQ_PID" >/dev/null 2>&1
 }
 
 stop_hotspot() {
