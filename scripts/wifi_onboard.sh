@@ -35,6 +35,16 @@ wifi_connected() {
   return 0
 }
 
+remove_existing_hotspot() {
+  nmcli -t -f NAME,TYPE,802-11-wireless.ssid con show 2>/dev/null | \
+    awk -F: -v ssid="$HOTSPOT_SSID" '$2=="802-11-wireless" && $3==ssid {print $1}' | \
+    while read -r name; do
+      if [[ -n "$name" ]]; then
+        nmcli con delete "$name" >/dev/null 2>&1 || true
+      fi
+    done
+}
+
 cleanup() {
   if [[ -n "${PORTAL_PID:-}" ]]; then
     kill "$PORTAL_PID" >/dev/null 2>&1 || true
@@ -62,6 +72,8 @@ if wifi_connected; then
   exit 0
 fi
 
+remove_existing_hotspot
+
 log "Starting hotspot '$HOTSPOT_SSID' on $HOTSPOT_IFACE"
 if [[ -n "$HOTSPOT_PASS" && ${#HOTSPOT_PASS} -ge 8 ]]; then
   nmcli dev wifi hotspot ifname "$HOTSPOT_IFACE" ssid "$HOTSPOT_SSID" password "$HOTSPOT_PASS" >/dev/null
@@ -70,6 +82,14 @@ else
 fi
 
 HOTSPOT_CONN="$(nmcli -t -f NAME,TYPE con show --active | awk -F: '$2=="wifi" {print $1; exit}')"
+
+if [[ -z "$HOTSPOT_PASS" || ${#HOTSPOT_PASS} -lt 8 ]]; then
+  # Ensure the hotspot is open (no security)
+  nmcli con modify "$HOTSPOT_CONN" 802-11-wireless-security.key-mgmt none >/dev/null 2>&1 || true
+  nmcli con modify "$HOTSPOT_CONN" 802-11-wireless-security.psk "" >/dev/null 2>&1 || true
+  nmcli con down "$HOTSPOT_CONN" >/dev/null 2>&1 || true
+  nmcli con up "$HOTSPOT_CONN" >/dev/null 2>&1 || true
+fi
 
 log "Launching captive portal on port $PORTAL_PORT"
 python3 "$SCRIPT_DIR/wifi_portal.py" --port "$PORTAL_PORT" --interface "$HOTSPOT_IFACE" --ssid "$HOTSPOT_SSID" &
