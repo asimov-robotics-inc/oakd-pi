@@ -122,6 +122,7 @@ To enable uploads, create `/etc/oakd/s3.env` on the Pi:
 S3_BUCKET=your-bucket
 S3_PREFIX=uploads
 S3_REGION=us-east-1
+S3_PROVIDER=AWS
 AWS_ACCESS_KEY_ID=...
 AWS_SECRET_ACCESS_KEY=...
 ```
@@ -129,7 +130,7 @@ AWS_SECRET_ACCESS_KEY=...
 See `docs/s3.env.example` for a template.
 
 Uploads use `rclone` with move semantics (upload then delete). If Wi-Fi is not connected, uploads are skipped.
-By default uploads go to `s3://$S3_BUCKET/$S3_PREFIX/<device-id>/...` where `<device-id>` is the hostname. If the hostname is `raspberrypi`, the uploader falls back to `/etc/machine-id`. You can always override with `S3_DEVICE_ID`.
+By default uploads go to `s3://$S3_BUCKET/$S3_PREFIX/<device-id>/...` where `<device-id>` is the hostname. If the hostname is `raspberrypi`, the uploader falls back to a short machine-id (e.g. `oakd-1a2b3c4d`). You can always override with `S3_DEVICE_ID` or `/etc/oakd/device_id`.
 
 ## Recordings
 

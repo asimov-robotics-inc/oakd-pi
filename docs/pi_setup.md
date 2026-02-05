@@ -111,13 +111,14 @@ Create `/etc/oakd/s3.env`:
 S3_BUCKET=your-bucket
 S3_PREFIX=uploads
 S3_REGION=us-east-1
+S3_PROVIDER=AWS
 AWS_ACCESS_KEY_ID=...
 AWS_SECRET_ACCESS_KEY=...
 ```
 
 Template: `docs/s3.env.example`.
 
-Uploads are stored under `s3://$S3_BUCKET/$S3_PREFIX/<device-id>/...`. If you keep the default hostname (`raspberrypi`) on multiple Pis, set `S3_DEVICE_ID` to avoid collisions.
+Uploads are stored under `s3://$S3_BUCKET/$S3_PREFIX/<device-id>/...`. If you keep the default hostname (`raspberrypi`) on multiple Pis, set `S3_DEVICE_ID` or `/etc/oakd/device_id` to avoid collisions.
 
 ## 4.4 Updating the Pi
 
