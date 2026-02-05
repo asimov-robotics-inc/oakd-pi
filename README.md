@@ -102,9 +102,9 @@ Or if you're on the Pi directly, use the helper scripts:
 
 ## Wi-Fi onboarding (optional)
 
-On boot, the Pi can open a temporary Wi-Fi hotspot for up to 5 minutes so you can enter credentials from your phone. The hotspot SSID is `oakd-setup`.
+On boot, the Pi can open a temporary Wi-Fi hotspot for up to 5 minutes so you can enter credentials from your phone. The hotspot SSID is `recording-device-setup` (password: `recording-device-setup`).
 
-- Connect to `oakd-setup` from your phone.
+- Connect to `recording-device-setup` from your phone and enter the password.
 - A captive portal should open automatically.
 - If it doesn't, open `http://192.168.4.1`.
 

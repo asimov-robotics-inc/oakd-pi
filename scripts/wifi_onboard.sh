@@ -4,8 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 TIMEOUT_S="${WIFI_ONBOARD_TIMEOUT_S:-300}"
-HOTSPOT_SSID="${WIFI_HOTSPOT_SSID:-oakd-setup}"
-HOTSPOT_PASS="${WIFI_HOTSPOT_PASS:-oakd-setup}"
+HOTSPOT_SSID="${WIFI_HOTSPOT_SSID:-recording-device-setup}"
+HOTSPOT_PASS="${WIFI_HOTSPOT_PASS:-recording-device-setup}"
 HOTSPOT_IFACE="${WIFI_HOTSPOT_IFACE:-wlan0}"
 PORTAL_PORT="${WIFI_PORTAL_PORT:-80}"
 
