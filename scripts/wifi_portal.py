@@ -10,7 +10,16 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 
-def scan_networks() -> list[dict]:
+def scan_networks(cache_path: str | None = None) -> list[dict]:
+    if cache_path:
+        try:
+            with open(cache_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, list) and data:
+                return data
+        except Exception:
+            pass
+
     try:
         result = subprocess.run(
             ["nmcli", "-t", "-f", "SSID,SECURITY,SIGNAL", "dev", "wifi", "list"],
@@ -72,7 +81,7 @@ class WifiPortalHandler(BaseHTTPRequestHandler):
             self._send("Not Found", status=404)
             return
 
-        networks = scan_networks()
+        networks = scan_networks(self.server.scan_cache)
         options = [
             f"<option value=\"{html.escape(n['ssid'])}\">"
             f"{html.escape(n['ssid'])} ({n['signal']}%, {html.escape(n['security'])})"
@@ -114,7 +123,7 @@ class WifiPortalHandler(BaseHTTPRequestHandler):
 
         <button type="submit">Connect</button>
       </form>
-      <p class="note">If this page doesn't refresh, try reconnecting to the hotspot and reload.</p>
+      <p class="note">If the list is empty, use the manual SSID field or reload after a minute.</p>
     </div>
   </body>
 </html>
@@ -193,10 +202,11 @@ class DnsHijackServer(threading.Thread):
 
 
 class WifiPortalServer(HTTPServer):
-    def __init__(self, server_address, handler_class, interface: str, creds_path: str):
+    def __init__(self, server_address, handler_class, interface: str, creds_path: str, scan_cache: str | None):
         super().__init__(server_address, handler_class)
         self.interface = interface
         self.creds_path = creds_path
+        self.scan_cache = scan_cache
 
 
 def main() -> None:
@@ -208,12 +218,13 @@ def main() -> None:
     parser.add_argument("--dns-ip", default="192.168.4.1")
     parser.add_argument("--no-dns", action="store_true")
     parser.add_argument("--out", default="/tmp/oakd-wifi-creds.json")
+    parser.add_argument("--scan-cache", default=None)
     args = parser.parse_args()
 
     if not args.no_dns:
         DnsHijackServer(args.dns_ip).start()
 
-    server = WifiPortalServer((args.host, args.port), WifiPortalHandler, args.interface, args.out)
+    server = WifiPortalServer((args.host, args.port), WifiPortalHandler, args.interface, args.out, args.scan_cache)
     print(f"Wi-Fi portal running on {args.host}:{args.port} (hotspot: {args.ssid})")
     server.serve_forever()
 

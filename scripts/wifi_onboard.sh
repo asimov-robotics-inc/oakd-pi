@@ -17,6 +17,7 @@ HOSTAPD_PID="/tmp/oakd-hostapd.pid"
 DNSMASQ_PID="/tmp/oakd-dnsmasq.pid"
 PORTAL_PID=""
 DNSMASQ_SYSTEM_STOPPED=""
+SCAN_CACHE="/tmp/oakd-wifi-scan.json"
 
 log() {
   echo "[wifi-onboard] $*"
@@ -60,6 +61,44 @@ remove_existing_hotspot() {
   set -e
 }
 
+write_scan_cache() {
+  if ! have_nmcli; then
+    return
+  fi
+  nmcli radio wifi on >/dev/null 2>&1 || true
+  nmcli dev wifi rescan ifname "$HOTSPOT_IFACE" >/dev/null 2>&1 || true
+  sleep 2
+  nmcli -t -f SSID,SECURITY,SIGNAL dev wifi list ifname "$HOTSPOT_IFACE" > /tmp/oakd-wifi-scan.txt || true
+  python3 - <<PY
+import json
+from pathlib import Path
+
+raw = Path("/tmp/oakd-wifi-scan.txt").read_text(encoding="utf-8", errors="ignore")
+networks = {}
+for line in raw.splitlines():
+    parts = line.split(":", 2)
+    if len(parts) != 3:
+        continue
+    ssid, security, signal = parts
+    ssid = ssid.strip()
+    if not ssid:
+        continue
+    try:
+        signal_val = int(signal)
+    except ValueError:
+        signal_val = 0
+    if ssid not in networks or networks[ssid]["signal"] < signal_val:
+        networks[ssid] = {
+            "ssid": ssid,
+            "security": security or "open",
+            "signal": signal_val,
+        }
+
+out = sorted(networks.values(), key=lambda x: x["signal"], reverse=True)
+Path("$SCAN_CACHE").write_text(json.dumps(out), encoding="utf-8")
+PY
+}
+
 cleanup() {
   if [[ -n "${PORTAL_PID:-}" ]]; then
     kill "$PORTAL_PID" >/dev/null 2>&1 || true
@@ -96,6 +135,7 @@ fi
 
 if have_nmcli; then
   nmcli radio wifi on >/dev/null 2>&1 || true
+  write_scan_cache
   nmcli dev set "$HOTSPOT_IFACE" managed no >/dev/null 2>&1 || true
 fi
 
@@ -163,7 +203,8 @@ python3 "$SCRIPT_DIR/wifi_portal.py" \
   --ssid "$HOTSPOT_SSID" \
   --dns-ip "$HOTSPOT_IP_ADDR" \
   --no-dns \
-  --out "$CREDS_PATH" &
+  --out "$CREDS_PATH" \
+  --scan-cache "$SCAN_CACHE" &
 PORTAL_PID=$!
 
 START_TS=$(date +%s)
@@ -208,7 +249,7 @@ PY
       nmcli dev set "$HOTSPOT_IFACE" managed no >/dev/null 2>&1 || true
     fi
     start_hotspot
-    python3 "$SCRIPT_DIR/wifi_portal.py" --port "$PORTAL_PORT" --interface "$HOTSPOT_IFACE" --ssid "$HOTSPOT_SSID" --dns-ip "$HOTSPOT_IP_ADDR" --no-dns --out "$CREDS_PATH" &
+    python3 "$SCRIPT_DIR/wifi_portal.py" --port "$PORTAL_PORT" --interface "$HOTSPOT_IFACE" --ssid "$HOTSPOT_SSID" --dns-ip "$HOTSPOT_IP_ADDR" --no-dns --out "$CREDS_PATH" --scan-cache "$SCAN_CACHE" &
     PORTAL_PID=$!
   fi
 
