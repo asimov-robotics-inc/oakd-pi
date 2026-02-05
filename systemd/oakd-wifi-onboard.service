@@ -6,7 +6,7 @@ Wants=NetworkManager.service
 [Service]
 Type=oneshot
 ExecStart=/home/pi/oakd-pi/scripts/wifi_onboard.sh
-TimeoutStartSec=300
+TimeoutStartSec=0
 Nice=10
 IOSchedulingClass=idle
 
