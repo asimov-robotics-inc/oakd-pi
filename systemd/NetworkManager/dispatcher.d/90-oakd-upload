@@ -3,8 +3,27 @@
 IFACE="$1"
 STATUS="$2"
 
+set_route_metrics() {
+  if ! command -v nmcli >/dev/null 2>&1; then
+    return
+  fi
+  CONN="$(nmcli -g GENERAL.CONNECTION device show "$IFACE" 2>/dev/null)"
+  TYPE="$(nmcli -g GENERAL.TYPE device show "$IFACE" 2>/dev/null)"
+  if [ -z "$CONN" ] || [ "$CONN" = "--" ]; then
+    return
+  fi
+  if [ "$TYPE" = "wifi" ]; then
+    nmcli con modify "$CONN" ipv4.route-metric 50 ipv6.route-metric 50 >/dev/null 2>&1 || true
+    nmcli dev reapply "$IFACE" >/dev/null 2>&1 || true
+  elif [ "$TYPE" = "ethernet" ]; then
+    nmcli con modify "$CONN" ipv4.route-metric 600 ipv6.route-metric 600 >/dev/null 2>&1 || true
+    nmcli dev reapply "$IFACE" >/dev/null 2>&1 || true
+  fi
+}
+
 case "$STATUS" in
   up|dhcp4-change|dhcp6-change)
+    set_route_metrics
     if command -v nmcli >/dev/null 2>&1; then
       if nmcli -t -f DEVICE,TYPE,STATE dev | grep -q "^${IFACE}:wifi:connected"; then
         systemctl start oakd-upload.service
