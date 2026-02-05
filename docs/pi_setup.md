@@ -103,13 +103,13 @@ This flow uses `hostapd` + `dnsmasq` for the hotspot (default on Raspberry Pi OS
 
 ## 4.3 S3 Uploads (optional)
 
-If Wi-Fi is connected and S3 credentials are configured, completed recording segments are uploaded to S3 and deleted locally to free space. Uploads only run when a `.done` marker exists for a segment.
+If Wi-Fi is connected and S3 credentials are configured, completed recording segments are uploaded to S3 and deleted locally to free space. Uploads run when a recording folder has been idle (no file writes) for at least 10 minutes.
 
 Create `/etc/oakd/s3.env`:
 
 ```bash
 S3_BUCKET=your-bucket
-S3_PREFIX=oakd-recordings
+S3_PREFIX=uploads
 S3_REGION=us-east-1
 AWS_ACCESS_KEY_ID=...
 AWS_SECRET_ACCESS_KEY=...
@@ -150,7 +150,7 @@ Each folder contains:
 - `recording_YYYYMMDD_HHMMSS.mcap` - sensor data (RGB + left/right mono + IMU @ 200Hz)
 - `calibration_YYYYMMDD_HHMMSS.json` - camera intrinsics/extrinsics
 - `metadata_YYYYMMDD_HHMMSS.json` - recording config + device info
-- `.done` - marker file created when a segment is fully closed (used for S3 upload)
+- Recording folders are uploaded once idle for 10+ minutes.
 
 ### Copying recordings to another machine
 

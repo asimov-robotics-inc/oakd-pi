@@ -3,8 +3,9 @@ set -euo pipefail
 
 RECORDINGS_DIR="${OAKD_RECORDINGS_DIR:-/home/pi/recordings}"
 S3_BUCKET="${S3_BUCKET:-}"
-S3_PREFIX="${S3_PREFIX:-oakd-recordings}"
+S3_PREFIX="${S3_PREFIX:-uploads}"
 S3_REGION="${S3_REGION:-us-east-1}"
+UPLOAD_AFTER_MINUTES="${UPLOAD_AFTER_MINUTES:-10}"
 if [[ -n "${S3_DEVICE_ID:-}" ]]; then
   DEVICE_ID="$S3_DEVICE_ID"
 else
@@ -54,12 +55,19 @@ for dir in "$RECORDINGS_DIR"/*; do
   if [[ ! -d "$dir" ]]; then
     continue
   fi
-  if [[ ! -f "$dir/.done" ]]; then
+  newest_ts="$(find "$dir" -type f -printf '%T@\n' 2>/dev/null | sort -n | tail -n 1)"
+  if [[ -z "$newest_ts" ]]; then
+    continue
+  fi
+  newest_int="${newest_ts%.*}"
+  now="$(date +%s)"
+  age_s=$((now - newest_int))
+  if (( age_s < UPLOAD_AFTER_MINUTES * 60 )); then
     continue
   fi
 
   base="$(basename "$dir")"
-  log "Uploading $base to $REMOTE_BASE/$base/"
+  log "Uploading $base to $REMOTE_BASE/$base/ (idle ${age_s}s)"
 
   rclone move \
     "$dir" \

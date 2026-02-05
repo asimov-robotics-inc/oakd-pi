@@ -114,13 +114,13 @@ This flow uses `hostapd` + `dnsmasq` for the hotspot (default on Raspberry Pi OS
 
 ## S3 upload (optional)
 
-If Wi-Fi is connected and S3 credentials are configured, completed recording segments are uploaded to S3 and deleted locally to free space. Uploads only run when a `.done` marker exists for a segment.
+If Wi-Fi is connected and S3 credentials are configured, completed recording segments are uploaded to S3 and deleted locally to free space. Uploads run when a recording folder has been idle (no file writes) for at least 10 minutes.
 
 To enable uploads, create `/etc/oakd/s3.env` on the Pi:
 
 ```bash
 S3_BUCKET=your-bucket
-S3_PREFIX=oakd-recordings
+S3_PREFIX=uploads
 S3_REGION=us-east-1
 AWS_ACCESS_KEY_ID=...
 AWS_SECRET_ACCESS_KEY=...
@@ -142,7 +142,7 @@ rotates to a new recording every 10 minutes for reliability.
     ├── recording_20260130_143052.mcap    # RGB + left/right mono + IMU
     ├── calibration_20260130_143052.json  # camera intrinsics/extrinsics
     ├── metadata_20260130_143052.json     # recording config + device info
-    └── .done                             # marker when a segment is fully closed
+    └── metadata_YYYYMMDD_HHMMSS.json     # recording metadata
 ```
 
 MCAP payloads are raw binary — H.265 video frames (RGB), MJPEG frames (left/right mono), and 48-byte packed IMU structs (6 little-endian doubles: ax, ay, az, gx, gy, gz). The recording is fsynced to disk every 5 seconds to limit data loss on hard power cuts.

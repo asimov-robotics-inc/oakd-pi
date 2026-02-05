@@ -228,14 +228,6 @@ class CaptureApp:
             return
 
         end_ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        done_path = self._last_recording_dir / ".done"
-        try:
-            if not done_path.exists():
-                done_path.write_text(end_ts, encoding="utf-8")
-                self._fsync_dir(self._last_recording_dir)
-        except Exception as e:
-            log.warning(f"Failed to write .done marker: {e}")
-
         metadata_path = self._last_recording_dir / f"metadata_{self._last_recording_ts}.json"
         if metadata_path.exists():
             try:

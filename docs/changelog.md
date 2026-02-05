@@ -14,7 +14,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 - Wi-Fi onboarding service with captive portal (5-minute window on boot)
 - Event-driven S3 uploader (uploads completed segments and deletes locally)
-- `.done` marker on segment close for safe uploads
+- Uploads now trigger when a recording folder is idle for 10+ minutes (no `.done` marker required)
 - rclone install in setup for S3 uploads
 
 ## [0.5.5] - 2026-02-05
