@@ -37,6 +37,19 @@ have_nmcli() {
   command -v nmcli >/dev/null 2>&1
 }
 
+stop_wpa() {
+  if systemctl is-active wpa_supplicant >/dev/null 2>&1; then
+    systemctl stop wpa_supplicant >/dev/null 2>&1 || true
+    WPA_STOPPED=1
+  fi
+}
+
+start_wpa() {
+  if [[ -n "$WPA_STOPPED" ]]; then
+    systemctl start wpa_supplicant >/dev/null 2>&1 || true
+  fi
+}
+
 active_wifi_conn() {
   nmcli -t -f NAME,TYPE,DEVICE con show --active 2>/dev/null | awk -F: '$2=="802-11-wireless" {print $1; exit}'
 }
@@ -432,15 +445,3 @@ PY
 done
 
 exit 0
-stop_wpa() {
-  if systemctl is-active wpa_supplicant >/dev/null 2>&1; then
-    systemctl stop wpa_supplicant >/dev/null 2>&1 || true
-    WPA_STOPPED=1
-  fi
-}
-
-start_wpa() {
-  if [[ -n "$WPA_STOPPED" ]]; then
-    systemctl start wpa_supplicant >/dev/null 2>&1 || true
-  fi
-}
