@@ -236,8 +236,12 @@ start_hotspot() {
 
   log "Starting hotspot '$HOTSPOT_SSID' on $HOTSPOT_AP_IFACE"
   ip link set "$HOTSPOT_AP_IFACE" down >/dev/null 2>&1 || true
-  if [[ "$AP_STA_MODE" -eq 1 && -n "$IW_BIN" ]]; then
-    "$IW_BIN" dev "$HOTSPOT_AP_IFACE" set type __ap >/dev/null 2>&1 || true
+  if [[ -n "$IW_BIN" ]]; then
+    if [[ "$AP_STA_MODE" -eq 1 ]]; then
+      "$IW_BIN" dev "$HOTSPOT_AP_IFACE" set type __ap >/dev/null 2>&1 || true
+    else
+      "$IW_BIN" dev "$HOTSPOT_AP_IFACE" set type __ap >/dev/null 2>&1 || true
+    fi
   fi
   ip addr flush dev "$HOTSPOT_AP_IFACE" >/dev/null 2>&1 || true
   ip link set "$HOTSPOT_AP_IFACE" up >/dev/null 2>&1 || true
