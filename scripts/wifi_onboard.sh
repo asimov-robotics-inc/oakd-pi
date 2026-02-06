@@ -23,6 +23,7 @@ SCAN_CACHE="/tmp/oakd-wifi-scan.json"
 CONNECTED=0
 USE_AP_IFACE=0
 AP_IFACE_CREATED=0
+IW_BIN=""
 
 log() {
   echo "[wifi-onboard] $*"
@@ -162,8 +163,8 @@ cleanup() {
   fi
 
   if [[ "$AP_IFACE_CREATED" -eq 1 ]]; then
-    if command -v iw >/dev/null 2>&1; then
-      iw dev "$HOTSPOT_AP_IFACE" del >/dev/null 2>&1 || true
+    if [[ -n "$IW_BIN" ]]; then
+      "$IW_BIN" dev "$HOTSPOT_AP_IFACE" del >/dev/null 2>&1 || true
     fi
   fi
 }
@@ -190,6 +191,14 @@ if ! command -v hostapd >/dev/null 2>&1 || ! command -v dnsmasq >/dev/null 2>&1;
   exit 0
 fi
 
+if command -v iw >/dev/null 2>&1; then
+  IW_BIN="$(command -v iw)"
+elif [[ -x /sbin/iw ]]; then
+  IW_BIN="/sbin/iw"
+elif [[ -x /usr/sbin/iw ]]; then
+  IW_BIN="/usr/sbin/iw"
+fi
+
 if have_nmcli; then
   nmcli radio wifi on >/dev/null 2>&1 || true
   write_scan_cache
@@ -206,16 +215,21 @@ start_hotspot() {
   local ap_iface="$HOTSPOT_IFACE"
   USE_AP_IFACE=0
   AP_IFACE_CREATED=0
-  if command -v iw >/dev/null 2>&1; then
-    if iw dev "$HOTSPOT_AP_IFACE" info >/dev/null 2>&1; then
+  if [[ -n "$IW_BIN" ]]; then
+    if "$IW_BIN" dev "$HOTSPOT_AP_IFACE" info >/dev/null 2>&1; then
       ap_iface="$HOTSPOT_AP_IFACE"
       USE_AP_IFACE=1
     else
-      if iw dev "$HOTSPOT_IFACE" interface add "$HOTSPOT_AP_IFACE" type __ap >/dev/null 2>&1; then
+      if "$IW_BIN" dev "$HOTSPOT_IFACE" interface add "$HOTSPOT_AP_IFACE" type __ap >/dev/null 2>&1; then
         ap_iface="$HOTSPOT_AP_IFACE"
         USE_AP_IFACE=1
         AP_IFACE_CREATED=1
       fi
+    fi
+    if [[ "$USE_AP_IFACE" -eq 1 ]] && ! "$IW_BIN" dev "$HOTSPOT_AP_IFACE" info >/dev/null 2>&1; then
+      USE_AP_IFACE=0
+      AP_IFACE_CREATED=0
+      ap_iface="$HOTSPOT_IFACE"
     fi
   fi
   HOTSPOT_AP_IFACE="$ap_iface"
