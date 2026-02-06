@@ -175,7 +175,7 @@ cleanup() {
     systemctl start dnsmasq >/dev/null 2>&1 || true
   fi
   if [[ -n "$NM_STOPPED" ]]; then
-    systemctl start NetworkManager >/dev/null 2>&1 || true
+    systemctl start --no-block NetworkManager >/dev/null 2>&1 || true
   fi
 
   if [[ "$CONNECTED" -eq 0 ]]; then
