@@ -218,9 +218,15 @@ start_hotspot() {
   AP_IFACE_CREATED=0
   if [[ -n "$IW_BIN" ]]; then
     if "$IW_BIN" dev "$HOTSPOT_AP_IFACE" info >/dev/null 2>&1; then
-      ap_iface="$HOTSPOT_AP_IFACE"
-      USE_AP_IFACE=1
-    else
+      iface_type="$("$IW_BIN" dev "$HOTSPOT_AP_IFACE" info 2>/dev/null | awk '/type/ {print $2; exit}')"
+      if [[ "$iface_type" == "AP" ]]; then
+        ap_iface="$HOTSPOT_AP_IFACE"
+        USE_AP_IFACE=1
+      else
+        "$IW_BIN" dev "$HOTSPOT_AP_IFACE" del >/dev/null 2>&1 || true
+      fi
+    fi
+    if [[ "$USE_AP_IFACE" -eq 0 ]]; then
       if "$IW_BIN" dev "$HOTSPOT_IFACE" interface add "$HOTSPOT_AP_IFACE" type __ap >/dev/null 2>&1; then
         ap_iface="$HOTSPOT_AP_IFACE"
         USE_AP_IFACE=1
