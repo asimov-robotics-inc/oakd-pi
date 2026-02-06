@@ -22,6 +22,7 @@ HOSTAPD_PID="/tmp/oakd-hostapd.pid"
 DNSMASQ_PID="/tmp/oakd-dnsmasq.pid"
 PORTAL_PID=""
 DNSMASQ_SYSTEM_STOPPED=""
+WPA_STOPPED=""
 SCAN_CACHE="/tmp/oakd-wifi-scan.json"
 CONNECTED=0
 USE_AP_IFACE=0
@@ -154,6 +155,7 @@ cleanup() {
   if [[ -n "$DNSMASQ_SYSTEM_STOPPED" ]]; then
     systemctl start dnsmasq >/dev/null 2>&1 || true
   fi
+  start_wpa
   if [[ "$CONNECTED" -eq 0 ]]; then
     ip addr flush dev "$HOTSPOT_AP_IFACE" >/dev/null 2>&1 || true
     ip link set "$HOTSPOT_AP_IFACE" down >/dev/null 2>&1 || true
@@ -239,6 +241,7 @@ start_hotspot() {
     "$IW_BIN" reg set "$WIFI_COUNTRY" >/dev/null 2>&1 || true
   fi
   rfkill unblock wifi >/dev/null 2>&1 || true
+  stop_wpa
 
   log "Starting hotspot '$HOTSPOT_SSID' on $HOTSPOT_AP_IFACE"
   ip link set "$HOTSPOT_AP_IFACE" down >/dev/null 2>&1 || true
@@ -381,6 +384,7 @@ PY
     fi
 
     if have_nmcli; then
+      start_wpa
       nmcli radio wifi on >/dev/null 2>&1 || true
       ok=0
       for _ in {1..3}; do
@@ -428,3 +432,15 @@ PY
 done
 
 exit 0
+stop_wpa() {
+  if systemctl is-active wpa_supplicant >/dev/null 2>&1; then
+    systemctl stop wpa_supplicant >/dev/null 2>&1 || true
+    WPA_STOPPED=1
+  fi
+}
+
+start_wpa() {
+  if [[ -n "$WPA_STOPPED" ]]; then
+    systemctl start wpa_supplicant >/dev/null 2>&1 || true
+  fi
+}
