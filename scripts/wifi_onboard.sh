@@ -20,6 +20,7 @@ HOSTAPD_PID="/tmp/oakd-hostapd.pid"
 DNSMASQ_PID="/tmp/oakd-dnsmasq.pid"
 PORTAL_PID=""
 DNSMASQ_SYSTEM_STOPPED=""
+NM_STOPPED=""
 SCAN_CACHE="/tmp/oakd-wifi-scan.json"
 CONNECTED=0
 USE_AP_IFACE=0
@@ -32,6 +33,25 @@ log() {
 
 have_nmcli() {
   command -v nmcli >/dev/null 2>&1
+}
+
+stop_network_manager() {
+  if systemctl is-active NetworkManager >/dev/null 2>&1; then
+    systemctl stop NetworkManager >/dev/null 2>&1 || true
+    NM_STOPPED=1
+  fi
+}
+
+start_network_manager() {
+  if [[ -n "$NM_STOPPED" ]]; then
+    systemctl start NetworkManager >/dev/null 2>&1 || true
+    for _ in {1..10}; do
+      if systemctl is-active NetworkManager >/dev/null 2>&1; then
+        break
+      fi
+      sleep 1
+    done
+  fi
 }
 
 active_wifi_conn() {
@@ -152,6 +172,9 @@ cleanup() {
   if [[ -n "$DNSMASQ_SYSTEM_STOPPED" ]]; then
     systemctl start dnsmasq >/dev/null 2>&1 || true
   fi
+  if [[ -n "$NM_STOPPED" ]]; then
+    systemctl start NetworkManager >/dev/null 2>&1 || true
+  fi
 
   if [[ "$CONNECTED" -eq 0 ]]; then
     ip addr flush dev "$HOTSPOT_AP_IFACE" >/dev/null 2>&1 || true
@@ -233,6 +256,10 @@ start_hotspot() {
     fi
   fi
   HOTSPOT_AP_IFACE="$ap_iface"
+
+  if [[ "$AP_STA_MODE" -eq 0 ]]; then
+    stop_network_manager
+  fi
 
   log "Starting hotspot '$HOTSPOT_SSID' on $HOTSPOT_AP_IFACE"
   ip link set "$HOTSPOT_AP_IFACE" down >/dev/null 2>&1 || true
@@ -373,6 +400,7 @@ PY
     fi
 
     if have_nmcli; then
+      start_network_manager
       nmcli radio wifi on >/dev/null 2>&1 || true
       ok=0
       for _ in {1..3}; do
