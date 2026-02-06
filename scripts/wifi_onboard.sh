@@ -9,6 +9,8 @@ HOTSPOT_PASS="${WIFI_HOTSPOT_PASS:-}"
 HOTSPOT_IFACE="${WIFI_HOTSPOT_IFACE:-wlan0}"
 HOTSPOT_AP_IFACE="${WIFI_HOTSPOT_AP_IFACE:-${HOTSPOT_IFACE}_ap}"
 AP_STA_MODE="${WIFI_AP_STA:-0}"
+HOTSPOT_CHANNEL="${WIFI_HOTSPOT_CHANNEL:-1}"
+WIFI_COUNTRY="${WIFI_COUNTRY:-US}"
 PORTAL_PORT="${WIFI_PORTAL_PORT:-80}"
 HOTSPOT_IP="${WIFI_HOTSPOT_IP:-192.168.4.1/24}"
 HOTSPOT_IP_ADDR="${HOTSPOT_IP%/*}"
@@ -261,6 +263,11 @@ start_hotspot() {
     stop_network_manager
   fi
 
+  if [[ -n "$IW_BIN" ]]; then
+    "$IW_BIN" reg set "$WIFI_COUNTRY" >/dev/null 2>&1 || true
+  fi
+  rfkill unblock wifi >/dev/null 2>&1 || true
+
   log "Starting hotspot '$HOTSPOT_SSID' on $HOTSPOT_AP_IFACE"
   ip link set "$HOTSPOT_AP_IFACE" down >/dev/null 2>&1 || true
   if [[ -n "$IW_BIN" ]]; then
@@ -304,10 +311,10 @@ interface=$HOTSPOT_AP_IFACE
 driver=nl80211
 ssid=$HOTSPOT_SSID
 hw_mode=g
-channel=6
+channel=$HOTSPOT_CHANNEL
 auth_algs=1
 ignore_broadcast_ssid=0
-country_code=US
+country_code=$WIFI_COUNTRY
 ieee80211d=1
 ieee80211n=1
 wmm_enabled=1
