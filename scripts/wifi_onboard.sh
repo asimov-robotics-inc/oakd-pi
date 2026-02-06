@@ -159,6 +159,7 @@ cleanup() {
 
     if have_nmcli; then
       nmcli dev set "$HOTSPOT_IFACE" managed yes >/dev/null 2>&1 || true
+      nmcli dev set "$HOTSPOT_AP_IFACE" managed yes >/dev/null 2>&1 || true
     fi
   fi
 
@@ -237,17 +238,27 @@ start_hotspot() {
   log "Starting hotspot '$HOTSPOT_SSID' on $HOTSPOT_AP_IFACE"
   ip link set "$HOTSPOT_AP_IFACE" down >/dev/null 2>&1 || true
   ip addr flush dev "$HOTSPOT_AP_IFACE" >/dev/null 2>&1 || true
-  ip addr add "$HOTSPOT_IP" dev "$HOTSPOT_AP_IFACE" >/dev/null 2>&1 || true
   ip link set "$HOTSPOT_AP_IFACE" up >/dev/null 2>&1 || true
-  for _ in {1..10}; do
+  for _ in {1..30}; do
     if ip link show "$HOTSPOT_AP_IFACE" >/dev/null 2>&1; then
       break
     fi
     sleep 0.2
   done
+  for _ in {1..10}; do
+    if ip addr show "$HOTSPOT_AP_IFACE" | grep -q "$HOTSPOT_IP_ADDR"; then
+      break
+    fi
+    ip addr add "$HOTSPOT_IP" dev "$HOTSPOT_AP_IFACE" >/dev/null 2>&1 || true
+    sleep 0.2
+  done
 
-  if [[ "$USE_AP_IFACE" -eq 0 ]] && have_nmcli; then
-    nmcli dev set "$HOTSPOT_IFACE" managed no >/dev/null 2>&1 || true
+  if have_nmcli; then
+    if [[ "$USE_AP_IFACE" -eq 0 ]]; then
+      nmcli dev set "$HOTSPOT_IFACE" managed no >/dev/null 2>&1 || true
+    else
+      nmcli dev set "$HOTSPOT_AP_IFACE" managed no >/dev/null 2>&1 || true
+    fi
   fi
 
   if systemctl is-active dnsmasq >/dev/null 2>&1; then
@@ -305,6 +316,7 @@ stop_hotspot() {
   ip addr flush dev "$HOTSPOT_AP_IFACE" >/dev/null 2>&1 || true
   if have_nmcli; then
     nmcli dev set "$HOTSPOT_IFACE" managed yes >/dev/null 2>&1 || true
+    nmcli dev set "$HOTSPOT_AP_IFACE" managed yes >/dev/null 2>&1 || true
   fi
 }
 
