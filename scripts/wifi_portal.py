@@ -96,6 +96,14 @@ class WifiPortalHandler(BaseHTTPRequestHandler):
             self._send("Not Found", status=404)
             return
 
+        status = {"state": "idle"}
+        if self.server.status_path:
+            try:
+                with open(self.server.status_path, "r", encoding="utf-8") as f:
+                    status = json.load(f)
+            except Exception:
+                status = {"state": "idle"}
+
         networks = scan_networks(self.server.scan_cache)
         options = [
             f"<option value=\"{html.escape(n['ssid'])}\">{html.escape(n['ssid'])}</option>"
@@ -103,6 +111,7 @@ class WifiPortalHandler(BaseHTTPRequestHandler):
         ]
         options_html = "\n".join(options) if options else "<option value=\"\">(no networks found)</option>"
         has_networks = "true" if options else "false"
+        status_json = json.dumps(status).replace("<", "\\u003c")
 
         page = f"""
 <!doctype html>
@@ -132,6 +141,28 @@ class WifiPortalHandler(BaseHTTPRequestHandler):
         border-radius: 16px;
         padding: 24px;
         box-shadow: 0 10px 30px rgba(31, 41, 55, 0.12);
+      }}
+      .status {{
+        display: none;
+        padding: 10px 12px;
+        border-radius: 10px;
+        font-size: 13px;
+        margin-bottom: 12px;
+      }}
+      .status.show {{
+        display: block;
+      }}
+      .status.info {{
+        background: #e0f2fe;
+        color: #075985;
+      }}
+      .status.error {{
+        background: #fee2e2;
+        color: #991b1b;
+      }}
+      .status.success {{
+        background: #dcfce7;
+        color: #166534;
       }}
       h2 {{
         margin: 0 0 8px 0;
@@ -196,6 +227,7 @@ class WifiPortalHandler(BaseHTTPRequestHandler):
       <div class="card">
         <h2>Connect to Wi‑Fi</h2>
         <p class="subtitle">Choose a network and enter the password.</p>
+        <div id="status" class="status"></div>
         <form method="POST" action="/connect">
           <label for="ssid">Select network</label>
           <select name="ssid" id="ssid">
@@ -215,10 +247,37 @@ class WifiPortalHandler(BaseHTTPRequestHandler):
       const hasNetworks = {has_networks};
       const btn = document.getElementById('connect');
       const sel = document.getElementById('ssid');
+      const statusEl = document.getElementById('status');
       if (!hasNetworks) {{
         btn.disabled = true;
         sel.disabled = true;
       }}
+
+      function setStatus(state, message) {{
+        if (!state || state === 'idle') {{
+          statusEl.className = 'status';
+          statusEl.textContent = '';
+          return;
+        }}
+        let cls = 'status info';
+        if (state === 'failed') cls = 'status error';
+        if (state === 'success') cls = 'status success';
+        statusEl.className = cls + ' show';
+        statusEl.textContent = message || state;
+      }}
+
+      async function poll() {{
+        try {{
+          const res = await fetch('/status', {{cache: 'no-store'}});
+          const data = await res.json();
+          setStatus(data.state, data.message);
+        }} catch (e) {{}}
+      }}
+
+      const initialStatus = {status_json};
+      setStatus(initialStatus.state, initialStatus.message);
+      setInterval(poll, 2000);
+      poll();
     </script>
   </body>
 </html>
@@ -237,7 +296,12 @@ class WifiPortalHandler(BaseHTTPRequestHandler):
         password = (params.get("password") or [""])[0]
 
         if not ssid:
-            self._send("<h3>SSID required. Go back and try again.</h3>")
+            if self.server.status_path:
+                with open(self.server.status_path, "w", encoding="utf-8") as f:
+                    json.dump({"state": "failed", "message": "SSID is required."}, f)
+            self.send_response(303)
+            self.send_header("Location", "/")
+            self.end_headers()
             return
 
         try:
@@ -245,48 +309,10 @@ class WifiPortalHandler(BaseHTTPRequestHandler):
                 json.dump({"ssid": ssid, "password": password}, f)
             if self.server.status_path:
                 with open(self.server.status_path, "w", encoding="utf-8") as f:
-                    json.dump({"state": "received", "message": "Credentials received"}, f)
-            page = f"""
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Connecting...</title>
-    <style>
-      body {{ font-family: Arial, sans-serif; margin: 24px; }}
-      .card {{ max-width: 420px; margin: 0 auto; }}
-      .status {{ margin-top: 12px; }}
-      a {{ display: inline-block; margin-top: 12px; }}
-    </style>
-  </head>
-  <body>
-    <div class="card">
-      <h2>Connecting to {html.escape(ssid)}</h2>
-      <div class="status" id="status">Attempting to connect...</div>
-      <a href="/" id="retry" style="display:none;">Try again</a>
-      <p>If connection succeeds, this hotspot will disappear.</p>
-    </div>
-    <script>
-      async function poll() {{
-        try {{
-          const res = await fetch('/status', {{cache: 'no-store'}});
-          const data = await res.json();
-          if (data.state === 'success') {{
-            document.getElementById('status').textContent = data.message || 'Connected.';
-          }} else if (data.state === 'failed') {{
-            document.getElementById('status').textContent = data.message || 'Failed to connect.';
-            document.getElementById('retry').style.display = 'inline-block';
-          }}
-        }} catch (e) {{}}
-      }}
-      setInterval(poll, 2000);
-      poll();
-    </script>
-  </body>
-</html>
-"""
-            self._send(page)
+                    json.dump({"state": "connecting", "message": f"Connecting to {ssid}..."}, f)
+            self.send_response(303)
+            self.send_header("Location", "/")
+            self.end_headers()
         except Exception as exc:
             err = html.escape(str(exc))
             self._send(f"<h3>Failed to save credentials:</h3><pre>{err}</pre>")

@@ -7,6 +7,7 @@ TIMEOUT_S="${WIFI_ONBOARD_TIMEOUT_S:-300}"
 HOTSPOT_SSID="${WIFI_HOTSPOT_SSID:-recording-device-setup}"
 HOTSPOT_PASS="${WIFI_HOTSPOT_PASS:-}"
 HOTSPOT_IFACE="${WIFI_HOTSPOT_IFACE:-wlan0}"
+HOTSPOT_AP_IFACE="${WIFI_HOTSPOT_AP_IFACE:-${HOTSPOT_IFACE}_ap}"
 PORTAL_PORT="${WIFI_PORTAL_PORT:-80}"
 HOTSPOT_IP="${WIFI_HOTSPOT_IP:-192.168.4.1/24}"
 HOTSPOT_IP_ADDR="${HOTSPOT_IP%/*}"
@@ -20,6 +21,8 @@ PORTAL_PID=""
 DNSMASQ_SYSTEM_STOPPED=""
 SCAN_CACHE="/tmp/oakd-wifi-scan.json"
 CONNECTED=0
+USE_AP_IFACE=0
+AP_IFACE_CREATED=0
 
 log() {
   echo "[wifi-onboard] $*"
@@ -149,12 +152,18 @@ cleanup() {
   fi
 
   if [[ "$CONNECTED" -eq 0 ]]; then
-    ip addr flush dev "$HOTSPOT_IFACE" >/dev/null 2>&1 || true
-    ip link set "$HOTSPOT_IFACE" down >/dev/null 2>&1 || true
-    ip link set "$HOTSPOT_IFACE" up >/dev/null 2>&1 || true
+    ip addr flush dev "$HOTSPOT_AP_IFACE" >/dev/null 2>&1 || true
+    ip link set "$HOTSPOT_AP_IFACE" down >/dev/null 2>&1 || true
+    ip link set "$HOTSPOT_AP_IFACE" up >/dev/null 2>&1 || true
 
     if have_nmcli; then
       nmcli dev set "$HOTSPOT_IFACE" managed yes >/dev/null 2>&1 || true
+    fi
+  fi
+
+  if [[ "$AP_IFACE_CREATED" -eq 1 ]]; then
+    if command -v iw >/dev/null 2>&1; then
+      iw dev "$HOTSPOT_AP_IFACE" del >/dev/null 2>&1 || true
     fi
   fi
 }
@@ -184,7 +193,6 @@ fi
 if have_nmcli; then
   nmcli radio wifi on >/dev/null 2>&1 || true
   write_scan_cache
-  nmcli dev set "$HOTSPOT_IFACE" managed no >/dev/null 2>&1 || true
 fi
 
 if wifi_connected; then
@@ -195,11 +203,32 @@ fi
 remove_existing_hotspot
 
 start_hotspot() {
-  log "Starting hotspot '$HOTSPOT_SSID' on $HOTSPOT_IFACE"
-  ip link set "$HOTSPOT_IFACE" down >/dev/null 2>&1 || true
-  ip addr flush dev "$HOTSPOT_IFACE" >/dev/null 2>&1 || true
-  ip addr add "$HOTSPOT_IP" dev "$HOTSPOT_IFACE" >/dev/null 2>&1 || true
-  ip link set "$HOTSPOT_IFACE" up >/dev/null 2>&1 || true
+  local ap_iface="$HOTSPOT_IFACE"
+  USE_AP_IFACE=0
+  AP_IFACE_CREATED=0
+  if command -v iw >/dev/null 2>&1; then
+    if iw dev "$HOTSPOT_AP_IFACE" info >/dev/null 2>&1; then
+      ap_iface="$HOTSPOT_AP_IFACE"
+      USE_AP_IFACE=1
+    else
+      if iw dev "$HOTSPOT_IFACE" interface add "$HOTSPOT_AP_IFACE" type __ap >/dev/null 2>&1; then
+        ap_iface="$HOTSPOT_AP_IFACE"
+        USE_AP_IFACE=1
+        AP_IFACE_CREATED=1
+      fi
+    fi
+  fi
+  HOTSPOT_AP_IFACE="$ap_iface"
+
+  log "Starting hotspot '$HOTSPOT_SSID' on $HOTSPOT_AP_IFACE"
+  ip link set "$HOTSPOT_AP_IFACE" down >/dev/null 2>&1 || true
+  ip addr flush dev "$HOTSPOT_AP_IFACE" >/dev/null 2>&1 || true
+  ip addr add "$HOTSPOT_IP" dev "$HOTSPOT_AP_IFACE" >/dev/null 2>&1 || true
+  ip link set "$HOTSPOT_AP_IFACE" up >/dev/null 2>&1 || true
+
+  if [[ "$USE_AP_IFACE" -eq 0 ]] && have_nmcli; then
+    nmcli dev set "$HOTSPOT_IFACE" managed no >/dev/null 2>&1 || true
+  fi
 
   if systemctl is-active dnsmasq >/dev/null 2>&1; then
     systemctl stop dnsmasq >/dev/null 2>&1 || true
@@ -207,7 +236,7 @@ start_hotspot() {
   fi
 
   cat > "$HOSTAPD_CONF" <<EOF
-interface=$HOTSPOT_IFACE
+interface=$HOTSPOT_AP_IFACE
 driver=nl80211
 ssid=$HOTSPOT_SSID
 hw_mode=g
@@ -231,7 +260,7 @@ EOF
   fi
 
   cat > "$DNSMASQ_CONF" <<EOF
-interface=$HOTSPOT_IFACE
+interface=$HOTSPOT_AP_IFACE
 bind-interfaces
 dhcp-range=192.168.4.2,192.168.4.50,255.255.255.0,24h
 dhcp-option=option:router,${HOTSPOT_IP_ADDR}
@@ -253,7 +282,7 @@ stop_hotspot() {
     kill "$(cat "$DNSMASQ_PID")" >/dev/null 2>&1 || true
   fi
   rm -f "$HOSTAPD_PID" "$DNSMASQ_PID"
-  ip addr flush dev "$HOTSPOT_IFACE" >/dev/null 2>&1 || true
+  ip addr flush dev "$HOTSPOT_AP_IFACE" >/dev/null 2>&1 || true
   if have_nmcli; then
     nmcli dev set "$HOTSPOT_IFACE" managed yes >/dev/null 2>&1 || true
   fi
@@ -264,7 +293,7 @@ start_hotspot
 log "Launching captive portal on port $PORTAL_PORT"
 python3 "$SCRIPT_DIR/wifi_portal.py" \
   --port "$PORTAL_PORT" \
-  --interface "$HOTSPOT_IFACE" \
+  --interface "$HOTSPOT_AP_IFACE" \
   --ssid "$HOTSPOT_SSID" \
   --dns-ip "$HOTSPOT_IP_ADDR" \
   --no-dns \
@@ -300,8 +329,10 @@ PY
     write_status "connecting" "Attempting to connect..."
     err=""
 
-    # Stop hotspot and switch back to managed mode
-    stop_hotspot
+    # Stop hotspot only if we can't run AP+STA
+    if [[ "$USE_AP_IFACE" -eq 0 ]]; then
+      stop_hotspot
+    fi
 
     if have_nmcli; then
       nmcli radio wifi on >/dev/null 2>&1 || true
@@ -332,10 +363,12 @@ PY
       write_status "failed" "Failed to connect. Check password or try another network."
     fi
     log "Failed to connect; restarting hotspot"
-    if have_nmcli; then
-      nmcli dev set "$HOTSPOT_IFACE" managed no >/dev/null 2>&1 || true
+    if [[ "$USE_AP_IFACE" -eq 0 ]]; then
+      if have_nmcli; then
+        nmcli dev set "$HOTSPOT_IFACE" managed no >/dev/null 2>&1 || true
+      fi
+      start_hotspot
     fi
-    start_hotspot
     # portal already running; leave it up
   fi
 

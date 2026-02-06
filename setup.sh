@@ -5,7 +5,7 @@ echo "==> updating system packages"
 sudo apt update && sudo apt upgrade -y
 
 echo "==> installing system dependencies"
-sudo apt install -y git python3-dev libusb-1.0-0-dev libopenblas-dev rclone hostapd dnsmasq
+sudo apt install -y git python3-dev libusb-1.0-0-dev libopenblas-dev rclone hostapd dnsmasq iw
 
 echo "==> adding OAK-D udev rules"
 echo 'SUBSYSTEM=="usb", ATTRS{idVendor}=="03e7", MODE="0666"' | \
