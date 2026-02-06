@@ -276,6 +276,7 @@ start_hotspot() {
     else
       "$IW_BIN" dev "$HOTSPOT_AP_IFACE" set type __ap >/dev/null 2>&1 || true
     fi
+    "$IW_BIN" dev "$HOTSPOT_AP_IFACE" set channel "$HOTSPOT_CHANNEL" >/dev/null 2>&1 || true
   fi
   ip addr flush dev "$HOTSPOT_AP_IFACE" >/dev/null 2>&1 || true
   ip link set "$HOTSPOT_AP_IFACE" up >/dev/null 2>&1 || true
