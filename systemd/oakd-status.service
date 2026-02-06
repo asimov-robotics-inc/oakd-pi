@@ -1,0 +1,13 @@
+[Unit]
+Description=OAK-D Status Heartbeat
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=pi
+EnvironmentFile=-/etc/oakd/s3.env
+ExecStart=/home/pi/oakd-pi/scripts/s3_status.sh
+Nice=10
+IOSchedulingClass=idle
+

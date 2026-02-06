@@ -22,6 +22,14 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - Switched Wi-Fi onboarding hotspot to hostapd + dnsmasq for reliable captive portal auto-open
 
+## [0.5.6] - 2026-02-06
+
+### Added
+- S3 status heartbeat (per-device `status.json`) for dashboard online/offline views
+
+### Changed
+- Wi-Fi portal submits credentials without leaving the page and keeps status visible
+
 ## [0.5.2] - 2026-02-01
 
 ### Changed

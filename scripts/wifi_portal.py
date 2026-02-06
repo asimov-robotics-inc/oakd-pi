@@ -59,6 +59,7 @@ class WifiPortalHandler(BaseHTTPRequestHandler):
         body_bytes = body.encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(body_bytes)))
         self.end_headers()
         self.wfile.write(body_bytes)
@@ -75,6 +76,7 @@ class WifiPortalHandler(BaseHTTPRequestHandler):
             body = json.dumps(status).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
+            self.send_header("Cache-Control", "no-store")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
@@ -228,7 +230,7 @@ class WifiPortalHandler(BaseHTTPRequestHandler):
         <h2>Connect to Wi‑Fi</h2>
         <p class="subtitle">Choose a network and enter the password.</p>
         <div id="status" class="status"></div>
-        <form method="POST" action="/connect">
+        <form id="wifi-form" method="POST" action="/connect">
           <label for="ssid">Select network</label>
           <select name="ssid" id="ssid">
             {options_html}
@@ -248,6 +250,7 @@ class WifiPortalHandler(BaseHTTPRequestHandler):
       const btn = document.getElementById('connect');
       const sel = document.getElementById('ssid');
       const statusEl = document.getElementById('status');
+      const form = document.getElementById('wifi-form');
       if (!hasNetworks) {{
         btn.disabled = true;
         sel.disabled = true;
@@ -278,6 +281,35 @@ class WifiPortalHandler(BaseHTTPRequestHandler):
       setStatus(initialStatus.state, initialStatus.message);
       setInterval(poll, 2000);
       poll();
+
+      form.addEventListener('submit', async (event) => {{
+        event.preventDefault();
+        if (!sel.value) {{
+          setStatus('failed', 'Select a network to continue.');
+          return;
+        }}
+        btn.disabled = true;
+        const originalText = btn.textContent;
+        btn.textContent = 'Connecting...';
+        try {{
+          const body = new URLSearchParams(new FormData(form));
+          await fetch('/connect', {{
+            method: 'POST',
+            headers: {{
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'X-Requested-With': 'fetch'
+            }},
+            body
+          }});
+        }} catch (err) {{
+          setStatus('failed', 'Could not submit credentials. Please retry.');
+        }} finally {{
+          setTimeout(() => {{
+            btn.disabled = false;
+            btn.textContent = originalText;
+          }}, 2000);
+        }}
+      }});
     </script>
   </body>
 </html>
@@ -299,9 +331,13 @@ class WifiPortalHandler(BaseHTTPRequestHandler):
             if self.server.status_path:
                 with open(self.server.status_path, "w", encoding="utf-8") as f:
                     json.dump({"state": "failed", "message": "SSID is required."}, f)
-            self.send_response(303)
-            self.send_header("Location", "/")
-            self.end_headers()
+            if self.headers.get("X-Requested-With") == "fetch":
+                self.send_response(204)
+                self.end_headers()
+            else:
+                self.send_response(303)
+                self.send_header("Location", "/")
+                self.end_headers()
             return
 
         try:
@@ -310,9 +346,13 @@ class WifiPortalHandler(BaseHTTPRequestHandler):
             if self.server.status_path:
                 with open(self.server.status_path, "w", encoding="utf-8") as f:
                     json.dump({"state": "connecting", "message": f"Connecting to {ssid}..."}, f)
-            self.send_response(303)
-            self.send_header("Location", "/")
-            self.end_headers()
+            if self.headers.get("X-Requested-With") == "fetch":
+                self.send_response(204)
+                self.end_headers()
+            else:
+                self.send_response(303)
+                self.send_header("Location", "/")
+                self.end_headers()
         except Exception as exc:
             err = html.escape(str(exc))
             self._send(f"<h3>Failed to save credentials:</h3><pre>{err}</pre>")

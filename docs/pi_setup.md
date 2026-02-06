@@ -96,7 +96,8 @@ On boot, the Pi can open a temporary Wi-Fi hotspot for up to 5 minutes so you ca
 - Connect to the hotspot SSID `recording-device-setup` (open, no password).
 - A captive portal should open automatically.
 - If it doesn't, open `http://192.168.4.1`.
-- After you submit credentials, the portal will show **success** or **failure**. If it fails, you can retry.
+- After you submit credentials, the portal stays on the same page and shows **success** or **failure**. If it fails, you can retry.
+- Some phones close the captive portal window once they switch to the target Wi-Fi. If that happens, reconnect to the hotspot and open `http://192.168.4.1` to see status.
 
 Once connected, credentials are saved and the hotspot stops.
 This flow uses `hostapd` + `dnsmasq` for the hotspot (default on Raspberry Pi OS Bookworm).
@@ -120,7 +121,32 @@ Template: `docs/s3.env.example`.
 
 Uploads are stored under `s3://$S3_BUCKET/$S3_PREFIX/<device-id>/...`. If you keep the default hostname (`raspberrypi`) on multiple Pis, set `S3_DEVICE_ID` or `/etc/oakd/device_id` to avoid collisions.
 
-## 4.4 Updating the Pi
+## 4.4 Status heartbeat (dashboard)
+
+When Wi-Fi is connected, a tiny JSON heartbeat is uploaded to S3 once per minute at:
+
+```
+s3://$S3_BUCKET/$S3_PREFIX/<device-id>/status.json
+```
+
+Example payload fields:
+
+```json
+{
+  "device_id": "oakd-1a2b3c4d",
+  "timestamp": 1710000000,
+  "timestamp_utc": "2024-03-09T12:00:00Z",
+  "wifi_connected": true,
+  "eth_connected": false,
+  "ip": "192.168.1.50",
+  "recording_state": "active",
+  "pending_recordings": 3
+}
+```
+
+Your dashboard can treat a device as **online** if `timestamp_utc` is recent (e.g., within 2 minutes).
+
+## 4.5 Updating the Pi
 
 If you pull new code changes on the Pi, stop the service first, then update, then restart.
 
