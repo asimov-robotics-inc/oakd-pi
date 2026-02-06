@@ -8,6 +8,7 @@ HOTSPOT_SSID="${WIFI_HOTSPOT_SSID:-recording-device-setup}"
 HOTSPOT_PASS="${WIFI_HOTSPOT_PASS:-}"
 HOTSPOT_IFACE="${WIFI_HOTSPOT_IFACE:-wlan0}"
 HOTSPOT_AP_IFACE="${WIFI_HOTSPOT_AP_IFACE:-${HOTSPOT_IFACE}_ap}"
+AP_STA_MODE="${WIFI_AP_STA:-0}"
 PORTAL_PORT="${WIFI_PORTAL_PORT:-80}"
 HOTSPOT_IP="${WIFI_HOTSPOT_IP:-192.168.4.1/24}"
 HOTSPOT_IP_ADDR="${HOTSPOT_IP%/*}"
@@ -216,7 +217,7 @@ start_hotspot() {
   local ap_iface="$HOTSPOT_IFACE"
   USE_AP_IFACE=0
   AP_IFACE_CREATED=0
-  if [[ -n "$IW_BIN" ]]; then
+  if [[ "$AP_STA_MODE" -eq 1 && -n "$IW_BIN" ]]; then
     if "$IW_BIN" dev "$HOTSPOT_AP_IFACE" info >/dev/null 2>&1; then
       "$IW_BIN" dev "$HOTSPOT_AP_IFACE" del >/dev/null 2>&1 || true
     fi
@@ -235,7 +236,7 @@ start_hotspot() {
 
   log "Starting hotspot '$HOTSPOT_SSID' on $HOTSPOT_AP_IFACE"
   ip link set "$HOTSPOT_AP_IFACE" down >/dev/null 2>&1 || true
-  if [[ -n "$IW_BIN" ]]; then
+  if [[ "$AP_STA_MODE" -eq 1 && -n "$IW_BIN" ]]; then
     "$IW_BIN" dev "$HOTSPOT_AP_IFACE" set type __ap >/dev/null 2>&1 || true
   fi
   ip addr flush dev "$HOTSPOT_AP_IFACE" >/dev/null 2>&1 || true
