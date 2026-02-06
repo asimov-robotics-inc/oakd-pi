@@ -239,6 +239,12 @@ start_hotspot() {
   ip addr flush dev "$HOTSPOT_AP_IFACE" >/dev/null 2>&1 || true
   ip addr add "$HOTSPOT_IP" dev "$HOTSPOT_AP_IFACE" >/dev/null 2>&1 || true
   ip link set "$HOTSPOT_AP_IFACE" up >/dev/null 2>&1 || true
+  for _ in {1..10}; do
+    if ip link show "$HOTSPOT_AP_IFACE" >/dev/null 2>&1; then
+      break
+    fi
+    sleep 0.2
+  done
 
   if [[ "$USE_AP_IFACE" -eq 0 ]] && have_nmcli; then
     nmcli dev set "$HOTSPOT_IFACE" managed no >/dev/null 2>&1 || true
@@ -275,7 +281,7 @@ EOF
 
   cat > "$DNSMASQ_CONF" <<EOF
 interface=$HOTSPOT_AP_IFACE
-bind-interfaces
+bind-dynamic
 dhcp-range=192.168.4.2,192.168.4.50,255.255.255.0,24h
 dhcp-option=option:router,${HOTSPOT_IP_ADDR}
 dhcp-option=option:dns-server,${HOTSPOT_IP_ADDR}
