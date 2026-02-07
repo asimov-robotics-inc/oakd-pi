@@ -8,7 +8,7 @@ HOTSPOT_SSID="${WIFI_HOTSPOT_SSID:-recording-device-setup}"
 HOTSPOT_PASS="${WIFI_HOTSPOT_PASS:-}"
 HOTSPOT_IFACE="${WIFI_HOTSPOT_IFACE:-wlan0}"
 HOTSPOT_AP_IFACE="${WIFI_HOTSPOT_AP_IFACE:-${HOTSPOT_IFACE}_ap}"
-AP_STA_MODE="${WIFI_AP_STA:-0}"
+AP_STA_MODE="${WIFI_AP_STA:-1}"
 HOTSPOT_CHANNEL="${WIFI_HOTSPOT_CHANNEL:-1}"
 WIFI_COUNTRY="${WIFI_COUNTRY:-US}"
 PORTAL_PORT="${WIFI_PORTAL_PORT:-80}"
@@ -234,6 +234,16 @@ start_hotspot() {
   USE_AP_IFACE=0
   AP_IFACE_CREATED=0
   if [[ "$AP_STA_MODE" -eq 1 && -n "$IW_BIN" ]]; then
+    if [[ -d /etc/NetworkManager/conf.d ]]; then
+      conf_path="/etc/NetworkManager/conf.d/oakd-unmanaged.conf"
+      if [[ ! -f "$conf_path" ]]; then
+        cat > "$conf_path" <<EOF
+[keyfile]
+unmanaged-devices=interface-name:${HOTSPOT_AP_IFACE}
+EOF
+        systemctl reload NetworkManager >/dev/null 2>&1 || true
+      fi
+    fi
     if "$IW_BIN" dev "$HOTSPOT_AP_IFACE" info >/dev/null 2>&1; then
       "$IW_BIN" dev "$HOTSPOT_AP_IFACE" del >/dev/null 2>&1 || true
     fi
@@ -247,6 +257,11 @@ start_hotspot() {
       AP_IFACE_CREATED=0
       ap_iface="$HOTSPOT_IFACE"
     fi
+    if [[ "$USE_AP_IFACE" -eq 0 ]]; then
+      AP_STA_MODE=0
+    fi
+  else
+    AP_STA_MODE=0
   fi
   HOTSPOT_AP_IFACE="$ap_iface"
 
@@ -254,7 +269,9 @@ start_hotspot() {
     "$IW_BIN" reg set "$WIFI_COUNTRY" >/dev/null 2>&1 || true
   fi
   rfkill unblock wifi >/dev/null 2>&1 || true
-  stop_wpa
+  if [[ "$AP_STA_MODE" -eq 0 ]]; then
+    stop_wpa
+  fi
 
   log "Starting hotspot '$HOTSPOT_SSID' on $HOTSPOT_AP_IFACE"
   ip link set "$HOTSPOT_AP_IFACE" down >/dev/null 2>&1 || true
