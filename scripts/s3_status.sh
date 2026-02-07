@@ -99,6 +99,7 @@ rclone copy \
   --s3-env-auth \
   --s3-provider "$S3_PROVIDER" \
   --s3-region "$S3_REGION" \
+  --s3-no-check-bucket \
   --transfers 1 \
   --checkers 1 \
   --stats 0
