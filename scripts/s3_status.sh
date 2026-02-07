@@ -51,14 +51,14 @@ if [[ -d "$RECORDINGS_DIR" ]]; then
   pending_dirs="$(find "$RECORDINGS_DIR" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')"
 fi
 
-wifi_state="false"
+wifi_state="False"
 if wifi_connected; then
-  wifi_state="true"
+  wifi_state="True"
 fi
 
-eth_state="false"
+eth_state="False"
 if eth_connected; then
-  eth_state="true"
+  eth_state="True"
 fi
 
 ip_addr="$(hostname -I 2>/dev/null | awk '{print $1}')"
@@ -102,4 +102,3 @@ rclone copy \
   --transfers 1 \
   --checkers 1 \
   --stats 0
-
