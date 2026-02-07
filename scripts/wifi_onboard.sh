@@ -202,6 +202,23 @@ Path("$STATUS_PATH").write_text(json.dumps(payload), encoding="utf-8")
 PY
 }
 
+hotspot_running() {
+  if [[ ! -f "$HOSTAPD_PID" || ! -f "$DNSMASQ_PID" ]]; then
+    return 1
+  fi
+  local hp
+  local dp
+  hp="$(cat "$HOSTAPD_PID" 2>/dev/null || true)"
+  dp="$(cat "$DNSMASQ_PID" 2>/dev/null || true)"
+  if [[ -z "$hp" || -z "$dp" ]]; then
+    return 1
+  fi
+  if [[ ! -d "/proc/$hp" || ! -d "/proc/$dp" ]]; then
+    return 1
+  fi
+  return 0
+}
+
 trap cleanup EXIT
 
 if ! command -v hostapd >/dev/null 2>&1 || ! command -v dnsmasq >/dev/null 2>&1; then
@@ -456,6 +473,13 @@ PY
   if (( NOW - START_TS >= TIMEOUT_S )); then
     log "Timeout reached (${TIMEOUT_S}s); stopping onboarding"
     break
+  fi
+
+  if [[ "$AP_STA_MODE" -eq 1 ]]; then
+    if ! hotspot_running; then
+      log "Hotspot stopped; restarting"
+      start_hotspot
+    fi
   fi
 
   sleep 2
