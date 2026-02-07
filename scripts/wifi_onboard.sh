@@ -433,6 +433,7 @@ PY
     log "Received credentials for '$ssid'"
     write_status "connecting" "Attempting to connect..."
     err=""
+    existing_wifi_uuids=()
 
     # Stop hotspot only if we can't run AP+STA
     if [[ "$USE_AP_IFACE" -eq 0 ]]; then
@@ -440,6 +441,14 @@ PY
     fi
 
     if have_nmcli; then
+      while IFS= read -r line; do
+        uuid="${line%%:*}"
+        ssid_check="$(nmcli -g 802-11-wireless.ssid con show "$uuid" 2>/dev/null | head -n1)"
+        if [[ "$ssid_check" == "$ssid" ]]; then
+          existing_wifi_uuids+=("$uuid")
+        fi
+      done < <(nmcli -t -f UUID,TYPE con show 2>/dev/null | awk -F: '$2=="802-11-wireless" {print $1}') || true
+
       start_wpa
       nmcli radio wifi on >/dev/null 2>&1 || true
       ok=0
@@ -467,6 +476,24 @@ PY
       write_status "failed" "$err"
     else
       write_status "failed" "Failed to connect. Check password or try another network."
+    fi
+    if have_nmcli; then
+      while IFS= read -r line; do
+        uuid="${line%%:*}"
+        ssid_check="$(nmcli -g 802-11-wireless.ssid con show "$uuid" 2>/dev/null | head -n1)"
+        if [[ "$ssid_check" == "$ssid" ]]; then
+          keep=0
+          for existing in "${existing_wifi_uuids[@]}"; do
+            if [[ "$existing" == "$uuid" ]]; then
+              keep=1
+              break
+            fi
+          done
+          if [[ "$keep" -eq 0 ]]; then
+            nmcli con delete uuid "$uuid" >/dev/null 2>&1 || true
+          fi
+        fi
+      done < <(nmcli -t -f UUID,TYPE con show 2>/dev/null | awk -F: '$2=="802-11-wireless" {print $1}') || true
     fi
     log "Failed to connect; restarting hotspot"
     if [[ "$USE_AP_IFACE" -eq 0 ]]; then
