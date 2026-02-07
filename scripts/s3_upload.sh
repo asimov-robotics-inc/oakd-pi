@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 RECORDINGS_DIR="${OAKD_RECORDINGS_DIR:-/home/pi/recordings}"
 S3_BUCKET="${S3_BUCKET:-}"
 S3_PREFIX="${S3_PREFIX:-uploads}"
@@ -8,18 +10,7 @@ S3_REGION="${S3_REGION:-us-east-1}"
 S3_PROVIDER="${S3_PROVIDER:-AWS}"
 UPLOAD_AFTER_MINUTES="${UPLOAD_AFTER_MINUTES:-10}"
 
-if [[ -n "${S3_DEVICE_ID:-}" ]]; then
-  DEVICE_ID="$S3_DEVICE_ID"
-elif [[ -r /etc/oakd/device_id ]]; then
-  DEVICE_ID="$(tr -d '\n' < /etc/oakd/device_id)"
-else
-  DEVICE_ID="$(hostname)"
-  if [[ "$DEVICE_ID" == "raspberrypi" && -r /etc/machine-id ]]; then
-    short_id="$(tr -d '\n' < /etc/machine-id | cut -c1-8)"
-    DEVICE_ID="oakd-${short_id}"
-  fi
-fi
-DEVICE_ID="${DEVICE_ID// /_}"
+DEVICE_ID="$("$SCRIPT_DIR/device_id.sh")"
 
 log() {
   echo "[s3-upload] $*"
@@ -80,6 +71,7 @@ for dir in "$RECORDINGS_DIR"/*; do
     --s3-env-auth \
     --s3-provider "$S3_PROVIDER" \
     --s3-region "$S3_REGION" \
+    --s3-no-check-bucket \
     --transfers 2 \
     --checkers 4 \
     --stats 1m

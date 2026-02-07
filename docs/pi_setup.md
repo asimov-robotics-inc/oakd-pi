@@ -119,7 +119,28 @@ AWS_SECRET_ACCESS_KEY=...
 
 Template: `docs/s3.env.example`.
 
-Uploads are stored under `s3://$S3_BUCKET/$S3_PREFIX/<device-id>/...`. If you keep the default hostname (`raspberrypi`) on multiple Pis, set `S3_DEVICE_ID` or `/etc/oakd/device_id` to avoid collisions.
+Uploads are stored under `s3://$S3_BUCKET/$S3_PREFIX/<device-id>/...`.
+
+### Device ID Mapping (recommended for multiple Pis)
+
+Instead of hardcoding a unique ID on each Pi, keep a shared mapping in the repo:
+
+- File: `config/device_map.json`
+- Key: Pi serial number
+- Value: stable device ID (e.g., `oakd-001`, `oakd-002`)
+
+Get the serial on a Pi:
+
+```bash
+cat /proc/cpuinfo | awk -F': ' '/Serial/ {print $2}'
+```
+
+The device ID resolution order is:
+
+1. `S3_DEVICE_ID` environment variable (overrides everything)
+2. `config/device_map.json` (repo mapping)
+3. `/etc/oakd/device_id`
+4. Hostname fallback (`raspberrypi` → `oakd-<machine-id>`)
 
 ## 4.4 Status heartbeat (dashboard)
 

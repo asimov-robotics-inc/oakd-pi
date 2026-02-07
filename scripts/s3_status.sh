@@ -1,24 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 RECORDINGS_DIR="${OAKD_RECORDINGS_DIR:-/home/pi/recordings}"
 S3_BUCKET="${S3_BUCKET:-}"
 S3_PREFIX="${S3_PREFIX:-uploads}"
 S3_REGION="${S3_REGION:-us-east-1}"
 S3_PROVIDER="${S3_PROVIDER:-AWS}"
 
-if [[ -n "${S3_DEVICE_ID:-}" ]]; then
-  DEVICE_ID="$S3_DEVICE_ID"
-elif [[ -r /etc/oakd/device_id ]]; then
-  DEVICE_ID="$(tr -d '\n' < /etc/oakd/device_id)"
-else
-  DEVICE_ID="$(hostname)"
-  if [[ "$DEVICE_ID" == "raspberrypi" && -r /etc/machine-id ]]; then
-    short_id="$(tr -d '\n' < /etc/machine-id | cut -c1-8)"
-    DEVICE_ID="oakd-${short_id}"
-  fi
-fi
-DEVICE_ID="${DEVICE_ID// /_}"
+DEVICE_ID="$("$SCRIPT_DIR/device_id.sh")"
 
 wifi_connected() {
   if ! command -v nmcli >/dev/null 2>&1; then
