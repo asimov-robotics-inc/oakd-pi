@@ -237,7 +237,7 @@ class WifiPortalHandler(BaseHTTPRequestHandler):
           </select>
 
           <label for="password">Password</label>
-          <input type="password" id="password" name="password" placeholder="Leave blank if open" />
+          <input type="text" id="password" name="password" placeholder="Leave blank if open" />
 
           <button id="connect" type="submit">Connect</button>
         </form>
