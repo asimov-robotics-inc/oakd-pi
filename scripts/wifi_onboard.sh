@@ -404,22 +404,31 @@ while true; do
   if [[ -f "$CREDS_PATH" ]]; then
     ssid="$(python3 - <<PY
 import json
-import sys
-with open("$CREDS_PATH", "r", encoding="utf-8") as f:
-    data = json.load(f)
-print(data.get("ssid", ""))
+try:
+    with open("$CREDS_PATH", "r", encoding="utf-8") as f:
+        data = json.load(f)
+    print(data.get("ssid", ""))
+except Exception:
+    print("")
 PY
 )"
     password="$(python3 - <<PY
 import json
-import sys
-with open("$CREDS_PATH", "r", encoding="utf-8") as f:
-    data = json.load(f)
-print(data.get("password", ""))
+try:
+    with open("$CREDS_PATH", "r", encoding="utf-8") as f:
+        data = json.load(f)
+    print(data.get("password", ""))
+except Exception:
+    print("")
 PY
 )"
 
     rm -f "$CREDS_PATH" || true
+
+    if [[ -z "$ssid" ]]; then
+      write_status "failed" "Invalid credentials payload. Please retry."
+      continue
+    fi
 
     log "Received credentials for '$ssid'"
     write_status "connecting" "Attempting to connect..."
