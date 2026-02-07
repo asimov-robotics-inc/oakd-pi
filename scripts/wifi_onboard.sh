@@ -473,10 +473,9 @@ PY
     fi
 
     if [[ -n "$err" ]]; then
-      write_status "failed" "$err"
-    else
-      write_status "failed" "Failed to connect. Check password or try another network."
+      log "Connect error: $err"
     fi
+    write_status "failed" "Unable to join network. Check password and try again."
     if have_nmcli; then
       while IFS= read -r line; do
         uuid="${line%%:*}"

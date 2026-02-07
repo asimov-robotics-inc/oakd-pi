@@ -260,6 +260,7 @@ class WifiPortalHandler(BaseHTTPRequestHandler):
         if (!state || state === 'idle') {{
           statusEl.className = 'status';
           statusEl.textContent = '';
+          btn.disabled = !hasNetworks;
           return;
         }}
         let cls = 'status info';
@@ -267,6 +268,11 @@ class WifiPortalHandler(BaseHTTPRequestHandler):
         if (state === 'success') cls = 'status success';
         statusEl.className = cls + ' show';
         statusEl.textContent = message || state;
+        if (state === 'connecting') {{
+          btn.disabled = true;
+        }} else {{
+          btn.disabled = !hasNetworks;
+        }}
       }}
 
       async function poll() {{
