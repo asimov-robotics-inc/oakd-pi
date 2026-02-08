@@ -33,8 +33,8 @@ DEVICE_RETRY_INTERVAL_S = 5.0
 
 # Video encoding settings (H.265 on camera)
 RGB_RESOLUTION = (1280, 720)  # 720p RGB (letterboxed to preserve full FOV)
-RGB_SENSOR_RESOLUTION = dai.ColorCameraProperties.SensorResolution.THE_12_MP  # Full FOV
-RGB_ISP_SCALE = (1, 2)  # Downscale ISP to 2028x1520 (4:3) before letterbox
+RGB_DEFAULT_SENSOR_RESOLUTION = dai.ColorCameraProperties.SensorResolution.THE_12_MP
+RGB_DEFAULT_ISP_SCALE = (1, 2)  # 12MP -> 2028x1520 (4:3) before letterbox
 MONO_RESOLUTION = (1280, 720)  # 720p mono
 H265_BITRATE = 6_000_000  # 6 Mbps - adjust if RGB quality or FPS drops
 MONO_MJPEG_QUALITY = 90
@@ -55,8 +55,9 @@ class State(Enum):
 class McapRecorder:
     """MCAP file recorder with raw binary format (no schemas)."""
 
-    def __init__(self, filepath: Path):
+    def __init__(self, filepath: Path, config: dict):
         self._filepath = filepath
+        self._config = config
         self._file = None
         self._writer = None
         self._channels = {}
@@ -76,25 +77,7 @@ class McapRecorder:
             )
 
         # Store recording parameters as MCAP metadata
-        self._writer.add_metadata(
-            "recording_config",
-            {
-                "rgb_resolution": f"{RGB_RESOLUTION[0]}x{RGB_RESOLUTION[1]}",
-                "rgb_sensor_resolution": str(RGB_SENSOR_RESOLUTION),
-                "rgb_isp_scale": f"{RGB_ISP_SCALE[0]}/{RGB_ISP_SCALE[1]}",
-                "rgb_fov_mode": "letterbox",
-                "mono_resolution": f"{MONO_RESOLUTION[0]}x{MONO_RESOLUTION[1]}",
-                "fps": str(CAMERA_FPS),
-                "rgb_encoding": "h265",
-                "rgb_bitrate": str(H265_BITRATE),
-                "mono_encoding": "mjpeg",
-                "mono_quality": str(MONO_MJPEG_QUALITY),
-                "imu_hz": str(IMU_HZ),
-                "sync_method": SYNC_METHOD,
-                "sync_threshold_ms": str(SYNC_THRESHOLD_MS),
-                "timestamp_source": "device",
-            },
-        )
+        self._writer.add_metadata("recording_config", self._config)
         log.info(f"Opened MCAP: {self._filepath}")
 
     def write_frame(self, channel_name: str, data: bytes, timestamp_ns: int):
@@ -165,6 +148,10 @@ class CaptureApp:
         self._last_queue_warn = {}
         self._segment_start_monotonic: Optional[float] = None
         self._last_disk_check = 0.0
+        self._rgb_sensor_name: Optional[str] = None
+        self._rgb_sensor_resolution = RGB_DEFAULT_SENSOR_RESOLUTION
+        self._rgb_isp_scale = RGB_DEFAULT_ISP_SCALE
+        self._recording_config: Optional[dict] = None
 
         # Register signal handlers
         signal.signal(signal.SIGTERM, self._handle_shutdown)
@@ -175,6 +162,34 @@ class CaptureApp:
         log.info(f"Received signal {signum}, shutting down...")
         self._running = False
         self._state = State.SHUTTING_DOWN
+
+    def _select_rgb_settings(self, device: dai.Device) -> None:
+        """Pick sensor resolution + ISP scale that preserves full FOV for the attached RGB sensor."""
+        sensor_name = "unknown"
+        sensor_res = RGB_DEFAULT_SENSOR_RESOLUTION
+        isp_scale = RGB_DEFAULT_ISP_SCALE
+
+        for cam in device.getConnectedCameraFeatures():
+            if cam.socket != dai.CameraBoardSocket.CAM_A:
+                continue
+            sensor_name = cam.sensorName or "unknown"
+            if cam.width == 1280 and cam.height == 800:
+                sensor_res = dai.ColorCameraProperties.SensorResolution.THE_800_P
+                isp_scale = (1, 1)
+            elif cam.width >= 4000 and cam.height >= 3000:
+                sensor_res = dai.ColorCameraProperties.SensorResolution.THE_12_MP
+                isp_scale = (1, 2)
+            elif cam.width >= 1920 and cam.height >= 1080:
+                sensor_res = dai.ColorCameraProperties.SensorResolution.THE_1080_P
+                isp_scale = (1, 1)
+            elif cam.width >= 1280 and cam.height >= 720:
+                sensor_res = dai.ColorCameraProperties.SensorResolution.THE_720_P
+                isp_scale = (1, 1)
+            break
+
+        self._rgb_sensor_name = sensor_name
+        self._rgb_sensor_resolution = sensor_res
+        self._rgb_isp_scale = isp_scale
 
     def _ensure_recordings_dir(self, timestamp: str) -> Path:
         """Ensure recordings directory exists and create per-recording folder."""
@@ -197,28 +212,12 @@ class CaptureApp:
     def _save_metadata(self, recording_dir: Path, timestamp: str, mcap_path: Path) -> None:
         """Save recording metadata."""
         try:
+            recording_config = self._recording_config or {}
             metadata = {
                 "recording_start": timestamp,
                 "mcap_path": str(mcap_path),
                 "device_id": self._device_id,
-                "recording_config": {
-                    "rgb_resolution": f"{RGB_RESOLUTION[0]}x{RGB_RESOLUTION[1]}",
-                    "rgb_sensor_resolution": str(RGB_SENSOR_RESOLUTION),
-                    "rgb_isp_scale": f"{RGB_ISP_SCALE[0]}/{RGB_ISP_SCALE[1]}",
-                    "rgb_fov_mode": "letterbox",
-                    "mono_resolution": f"{MONO_RESOLUTION[0]}x{MONO_RESOLUTION[1]}",
-                    "camera_fps": CAMERA_FPS,
-                    "imu_hz": IMU_HZ,
-                    "sync_method": SYNC_METHOD,
-                    "sync_threshold_ms": SYNC_THRESHOLD_MS,
-                    "timestamp_source": "device",
-                    "ir_intensity": IR_INTENSITY,
-                    "rgb_encoding": "h265",
-                    "h265_bitrate": H265_BITRATE,
-                    "mono_encoding": "mjpeg",
-                    "mono_quality": MONO_MJPEG_QUALITY,
-                    "streams": ["rgb", "left", "right", "imu"],
-                },
+                "recording_config": recording_config,
             }
             metadata_path = recording_dir / f"metadata_{timestamp}.json"
             with open(metadata_path, "w") as f:
@@ -292,7 +291,27 @@ class CaptureApp:
         self._last_recording_ts = timestamp
         self._last_recording_dir = recording_dir
 
-        self._recorder = McapRecorder(mcap_path)
+        self._recording_config = {
+            "rgb_resolution": f"{RGB_RESOLUTION[0]}x{RGB_RESOLUTION[1]}",
+            "rgb_sensor_resolution": str(self._rgb_sensor_resolution),
+            "rgb_sensor_name": self._rgb_sensor_name or "unknown",
+            "rgb_isp_scale": f"{self._rgb_isp_scale[0]}/{self._rgb_isp_scale[1]}",
+            "rgb_fov_mode": "letterbox",
+            "mono_resolution": f"{MONO_RESOLUTION[0]}x{MONO_RESOLUTION[1]}",
+            "camera_fps": CAMERA_FPS,
+            "imu_hz": IMU_HZ,
+            "sync_method": SYNC_METHOD,
+            "sync_threshold_ms": SYNC_THRESHOLD_MS,
+            "timestamp_source": "device",
+            "ir_intensity": IR_INTENSITY,
+            "rgb_encoding": "h265",
+            "h265_bitrate": H265_BITRATE,
+            "mono_encoding": "mjpeg",
+            "mono_quality": MONO_MJPEG_QUALITY,
+            "streams": ["rgb", "left", "right", "imu"],
+        }
+
+        self._recorder = McapRecorder(mcap_path, self._recording_config)
         self._recorder.open()
         if self._device:
             self._save_calibration(self._device, recording_dir, timestamp)
@@ -354,15 +373,17 @@ class CaptureApp:
                 except Exception as e:
                     log.warning(f"IR projector not available: {e}")
 
+                self._select_rgb_settings(device)
+
                 # Create pipeline with device context (v3 API)
                 with dai.Pipeline(device) as pipeline:
                     # RGB camera
                     cam_rgb = pipeline.create(dai.node.ColorCamera)
                     cam_rgb.setBoardSocket(dai.CameraBoardSocket.CAM_A)
-                    cam_rgb.setResolution(RGB_SENSOR_RESOLUTION)
+                    cam_rgb.setResolution(self._rgb_sensor_resolution)
                     cam_rgb.setFps(CAMERA_FPS)
                     cam_rgb.setInterleaved(False)
-                    cam_rgb.setIspScale(*RGB_ISP_SCALE)
+                    cam_rgb.setIspScale(*self._rgb_isp_scale)
 
                     # Mono cameras for stereo (hardware synced via FSYNC)
                     cam_left = pipeline.create(dai.node.MonoCamera)
@@ -423,16 +444,17 @@ class CaptureApp:
                     q_imu = imu.out.createOutputQueue(maxSize=100, blocking=False)
 
                     log.info(
-                        "Pipeline: RGB %sx%s letterbox @ %sfps (H.265 %sMbps, sensor %s, isp %s/%s), "
+                        "Pipeline: RGB %sx%s letterbox @ %sfps (H.265 %sMbps, sensor %s, isp %s/%s, name %s), "
                         "mono %sx%s @ %sfps (MJPEG Q%s), "
                         "sync threshold %sms",
                         RGB_RESOLUTION[0],
                         RGB_RESOLUTION[1],
                         CAMERA_FPS,
                         H265_BITRATE // 1_000_000,
-                        RGB_SENSOR_RESOLUTION,
-                        RGB_ISP_SCALE[0],
-                        RGB_ISP_SCALE[1],
+                        self._rgb_sensor_resolution,
+                        self._rgb_isp_scale[0],
+                        self._rgb_isp_scale[1],
+                        self._rgb_sensor_name,
                         MONO_RESOLUTION[0],
                         MONO_RESOLUTION[1],
                         CAMERA_FPS,
