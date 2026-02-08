@@ -35,7 +35,7 @@ DEVICE_RETRY_INTERVAL_S = 5.0
 RGB_RESOLUTION = (1280, 720)  # 720p RGB (letterboxed to preserve full FOV)
 RGB_DEFAULT_SENSOR_RESOLUTION = dai.ColorCameraProperties.SensorResolution.THE_12_MP
 RGB_DEFAULT_ISP_SCALE = (1, 2)  # 12MP -> 2028x1520 (4:3) before letterbox
-MONO_RESOLUTION = (1280, 720)  # 720p mono
+MONO_RESOLUTION = (1280, 800)  # 800p mono
 H265_BITRATE = 6_000_000  # 6 Mbps - adjust if RGB quality or FPS drops
 MONO_MJPEG_QUALITY = 90
 
@@ -391,12 +391,12 @@ class CaptureApp:
                     # Mono cameras for stereo (hardware synced via FSYNC)
                     cam_left = pipeline.create(dai.node.MonoCamera)
                     cam_left.setBoardSocket(dai.CameraBoardSocket.CAM_B)
-                    cam_left.setResolution(dai.MonoCameraProperties.SensorResolution.THE_720_P)
+                    cam_left.setResolution(dai.MonoCameraProperties.SensorResolution.THE_800_P)
                     cam_left.setFps(CAMERA_FPS)
 
                     cam_right = pipeline.create(dai.node.MonoCamera)
                     cam_right.setBoardSocket(dai.CameraBoardSocket.CAM_C)
-                    cam_right.setResolution(dai.MonoCameraProperties.SensorResolution.THE_720_P)
+                    cam_right.setResolution(dai.MonoCameraProperties.SensorResolution.THE_800_P)
                     cam_right.setFps(CAMERA_FPS)
 
                     # Resize RGB to 720p with letterbox to preserve full FOV
