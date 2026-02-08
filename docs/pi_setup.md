@@ -405,7 +405,7 @@ Expected output should be very close to:
 /oak/right: ~30 fps
 /oak/imu:   ~200 Hz
 RGB: 1280x720
-Mono: 1280x800
+Mono: 1280x720
 ```
 
 ### 6.4 Copy the recording to your laptop (optional)
@@ -428,7 +428,7 @@ rsync -az pi@pi-01.local:~/recordings/YYYYMMDD_HHMMSS/ ./test-recording/pi-01_YY
 
 Use the blue USB 3.0 ports, not USB 2.0. The current config uses:
 - RGB: 1280x720 (H.265)
-- Mono left/right: 1280x800 (MJPEG)
+- Mono left/right: 1280x720 (MJPEG)
 
 If errors persist, try a powered USB hub or reduce FPS/resolution.
 

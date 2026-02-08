@@ -32,8 +32,10 @@ DISK_CHECK_INTERVAL_S = 60.0
 DEVICE_RETRY_INTERVAL_S = 5.0
 
 # Video encoding settings (H.265 on camera)
-RGB_RESOLUTION = (1280, 720)  # 720p RGB
-MONO_RESOLUTION = (1280, 800)  # 800p mono (OV9282 native)
+RGB_RESOLUTION = (1280, 720)  # 720p RGB (letterboxed to preserve full FOV)
+RGB_SENSOR_RESOLUTION = dai.ColorCameraProperties.SensorResolution.THE_12_MP  # Full FOV
+RGB_ISP_SCALE = (1, 2)  # Downscale ISP to 2028x1520 (4:3) before letterbox
+MONO_RESOLUTION = (1280, 720)  # 720p mono
 H265_BITRATE = 6_000_000  # 6 Mbps - adjust if RGB quality or FPS drops
 MONO_MJPEG_QUALITY = 90
 
@@ -78,6 +80,9 @@ class McapRecorder:
             "recording_config",
             {
                 "rgb_resolution": f"{RGB_RESOLUTION[0]}x{RGB_RESOLUTION[1]}",
+                "rgb_sensor_resolution": str(RGB_SENSOR_RESOLUTION),
+                "rgb_isp_scale": f"{RGB_ISP_SCALE[0]}/{RGB_ISP_SCALE[1]}",
+                "rgb_fov_mode": "letterbox",
                 "mono_resolution": f"{MONO_RESOLUTION[0]}x{MONO_RESOLUTION[1]}",
                 "fps": str(CAMERA_FPS),
                 "rgb_encoding": "h265",
@@ -198,6 +203,9 @@ class CaptureApp:
                 "device_id": self._device_id,
                 "recording_config": {
                     "rgb_resolution": f"{RGB_RESOLUTION[0]}x{RGB_RESOLUTION[1]}",
+                    "rgb_sensor_resolution": str(RGB_SENSOR_RESOLUTION),
+                    "rgb_isp_scale": f"{RGB_ISP_SCALE[0]}/{RGB_ISP_SCALE[1]}",
+                    "rgb_fov_mode": "letterbox",
                     "mono_resolution": f"{MONO_RESOLUTION[0]}x{MONO_RESOLUTION[1]}",
                     "camera_fps": CAMERA_FPS,
                     "imu_hz": IMU_HZ,
@@ -351,26 +359,38 @@ class CaptureApp:
                     # RGB camera
                     cam_rgb = pipeline.create(dai.node.ColorCamera)
                     cam_rgb.setBoardSocket(dai.CameraBoardSocket.CAM_A)
-                    cam_rgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_720_P)
+                    cam_rgb.setResolution(RGB_SENSOR_RESOLUTION)
                     cam_rgb.setFps(CAMERA_FPS)
                     cam_rgb.setInterleaved(False)
+                    cam_rgb.setIspScale(*RGB_ISP_SCALE)
 
                     # Mono cameras for stereo (hardware synced via FSYNC)
                     cam_left = pipeline.create(dai.node.MonoCamera)
                     cam_left.setBoardSocket(dai.CameraBoardSocket.CAM_B)
-                    cam_left.setResolution(dai.MonoCameraProperties.SensorResolution.THE_800_P)
+                    cam_left.setResolution(dai.MonoCameraProperties.SensorResolution.THE_720_P)
                     cam_left.setFps(CAMERA_FPS)
 
                     cam_right = pipeline.create(dai.node.MonoCamera)
                     cam_right.setBoardSocket(dai.CameraBoardSocket.CAM_C)
-                    cam_right.setResolution(dai.MonoCameraProperties.SensorResolution.THE_800_P)
+                    cam_right.setResolution(dai.MonoCameraProperties.SensorResolution.THE_720_P)
                     cam_right.setFps(CAMERA_FPS)
+
+                    # Resize RGB to 720p with letterbox to preserve full FOV
+                    rgb_manip = pipeline.create(dai.node.ImageManip)
+                    rgb_manip.initialConfig.setOutputSize(
+                        RGB_RESOLUTION[0],
+                        RGB_RESOLUTION[1],
+                        dai.ImageManipConfig.ResizeMode.LETTERBOX,
+                    )
+                    rgb_manip.initialConfig.setFrameType(dai.ImgFrame.Type.NV12)
+                    rgb_manip.setMaxOutputFrameSize(int(RGB_RESOLUTION[0] * RGB_RESOLUTION[1] * 3 / 2))
+                    cam_rgb.isp.link(rgb_manip.inputImage)
 
                     # H.265 video encoder (encode on camera, not Pi)
                     enc_rgb = pipeline.create(dai.node.VideoEncoder)
                     enc_rgb.setDefaultProfilePreset(CAMERA_FPS, dai.VideoEncoderProperties.Profile.H265_MAIN)
                     enc_rgb.setBitrate(H265_BITRATE)
-                    cam_rgb.video.link(enc_rgb.input)
+                    rgb_manip.out.link(enc_rgb.input)
 
                     # MJPEG encoders for mono streams (stereo-safe, intra-frame)
                     enc_left = pipeline.create(dai.node.VideoEncoder)
@@ -403,13 +423,16 @@ class CaptureApp:
                     q_imu = imu.out.createOutputQueue(maxSize=100, blocking=False)
 
                     log.info(
-                        "Pipeline: RGB %sx%s @ %sfps (H.265 %sMbps), "
+                        "Pipeline: RGB %sx%s letterbox @ %sfps (H.265 %sMbps, sensor %s, isp %s/%s), "
                         "mono %sx%s @ %sfps (MJPEG Q%s), "
                         "sync threshold %sms",
                         RGB_RESOLUTION[0],
                         RGB_RESOLUTION[1],
                         CAMERA_FPS,
                         H265_BITRATE // 1_000_000,
+                        RGB_SENSOR_RESOLUTION,
+                        RGB_ISP_SCALE[0],
+                        RGB_ISP_SCALE[1],
                         MONO_RESOLUTION[0],
                         MONO_RESOLUTION[1],
                         CAMERA_FPS,
