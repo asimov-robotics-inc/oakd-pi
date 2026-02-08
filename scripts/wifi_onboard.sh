@@ -15,7 +15,7 @@ PORTAL_PORT="${WIFI_PORTAL_PORT:-80}"
 HOTSPOT_IP="${WIFI_HOTSPOT_IP:-192.168.4.1/24}"
 HOTSPOT_IP_ADDR="${HOTSPOT_IP%/*}"
 CREDS_PATH="${WIFI_CREDS_PATH:-/tmp/oakd-wifi-creds.json}"
-STATUS_PATH="${WIFI_STATUS_PATH:-/tmp/oakd-wifi-status.json}"
+STATUS_PATH="${WIFI_STATUS_PATH:-/etc/oakd/wifi_status.json}"
 HOSTAPD_CONF="/tmp/oakd-hostapd.conf"
 DNSMASQ_CONF="/tmp/oakd-dnsmasq.conf"
 HOSTAPD_PID="/tmp/oakd-hostapd.pid"
@@ -163,7 +163,7 @@ cleanup() {
   if [[ -f "$DNSMASQ_PID" ]]; then
     kill "$(cat "$DNSMASQ_PID")" >/dev/null 2>&1 || true
   fi
-  rm -f "$HOSTAPD_PID" "$DNSMASQ_PID" "$HOSTAPD_CONF" "$DNSMASQ_CONF" "$CREDS_PATH" "$STATUS_PATH"
+  rm -f "$HOSTAPD_PID" "$DNSMASQ_PID" "$HOSTAPD_CONF" "$DNSMASQ_CONF" "$CREDS_PATH"
 
   if [[ -n "$DNSMASQ_SYSTEM_STOPPED" ]]; then
     systemctl start dnsmasq >/dev/null 2>&1 || true
@@ -233,6 +233,8 @@ elif [[ -x /sbin/iw ]]; then
 elif [[ -x /usr/sbin/iw ]]; then
   IW_BIN="/usr/sbin/iw"
 fi
+
+mkdir -p "$(dirname "$STATUS_PATH")" >/dev/null 2>&1 || true
 
 if have_nmcli; then
   nmcli radio wifi on >/dev/null 2>&1 || true
