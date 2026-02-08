@@ -57,7 +57,10 @@ class McapRecorder:
 
     def __init__(self, filepath: Path, config: dict):
         self._filepath = filepath
-        self._config = config
+        self._config = {
+            key: json.dumps(value) if isinstance(value, (list, dict)) else str(value)
+            for key, value in config.items()
+        }
         self._file = None
         self._writer = None
         self._channels = {}
