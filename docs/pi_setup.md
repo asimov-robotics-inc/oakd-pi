@@ -13,6 +13,70 @@ This guide covers the manual setup flow for a Pi with a monitor and keyboard.
 - This repo already cloned to `~/oakd-pi`
 - OAK-D Pro + USB-C data cable
 
+## 0. Quick Start (new Pi, headless + Ethernet)
+
+Use this when you have a fresh Pi on Ethernet and want it recording with Wi‑Fi onboarding and S3 uploads.
+
+1. Find the Pi IP and SSH in:
+
+```bash
+arp -a | grep 192.168
+ssh pi@<pi-ip>
+```
+
+2. Clone the repo and enter it:
+
+```bash
+git clone https://github.com/asimov-robotics-inc/oakd-pi.git ~/oakd-pi
+cd ~/oakd-pi
+```
+
+3. Install dependencies:
+
+```bash
+./setup.sh
+```
+
+4. Add the Pi serial to the device map (so uploads are labeled `oakd-001`, `oakd-002`, etc.):
+
+```bash
+cat /proc/cpuinfo | awk -F': ' '/Serial/ {print $2}'
+```
+
+Update `config/device_map.json` in the repo with that serial and a new device ID, then pull the changes on the Pi:
+
+```bash
+git pull
+```
+
+5. Configure S3 uploads:
+
+```bash
+sudo tee /etc/oakd/s3.env >/dev/null <<'EOF'
+S3_BUCKET=oakd-streamed-recordings
+S3_PREFIX=uploads
+S3_REGION=us-east-1
+S3_PROVIDER=AWS
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+EOF
+```
+
+6. Start on-boot recording + services:
+
+```bash
+./run.sh
+```
+
+7. (Optional) Force the Wi‑Fi onboarding portal to appear:
+
+```bash
+sudo nmcli -t -f NAME,TYPE connection show | awk -F: '$2=="802-11-wireless" {print $1}' | \
+  while read -r conn; do sudo nmcli connection delete "$conn"; done
+sudo nmcli dev disconnect wlan0 || true
+sudo systemctl restart oakd-wifi-onboard.service
+```
+
 ### OAK-D Pro Connection
 
 Plug the OAK-D Pro's USB-C cable into one of the Pi 5's **blue USB 3.0 ports**
