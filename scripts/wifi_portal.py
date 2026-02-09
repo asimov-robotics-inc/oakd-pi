@@ -250,16 +250,22 @@ class WifiPortalHandler(BaseHTTPRequestHandler):
       const btn = document.getElementById('connect');
       const sel = document.getElementById('ssid');
       const statusEl = document.getElementById('status');
+      const hintEl = document.createElement('div');
+      hintEl.style.marginTop = '8px';
+      hintEl.style.fontSize = '12px';
+      hintEl.style.color = '#475569';
+      statusEl.insertAdjacentElement('afterend', hintEl);
       const form = document.getElementById('wifi-form');
       if (!hasNetworks) {{
         btn.disabled = true;
         sel.disabled = true;
       }}
 
-      function setStatus(state, message) {{
+      function setStatus(state, message, extra) {{
         if (!state || state === 'idle') {{
           statusEl.className = 'status';
           statusEl.textContent = '';
+          hintEl.textContent = '';
           btn.disabled = !hasNetworks;
           return;
         }}
@@ -268,6 +274,15 @@ class WifiPortalHandler(BaseHTTPRequestHandler):
         if (state === 'success') cls = 'status success';
         statusEl.className = cls + ' show';
         statusEl.textContent = message || state;
+        const ip = extra && extra.ip ? extra.ip : '';
+        const ssid = extra && extra.ssid ? extra.ssid : '';
+        if (state === 'success' && ip) {{
+          hintEl.textContent = `Device IP: ${ip} (SSID: ${ssid || 'unknown'})`;
+        }} else if (state === 'connecting') {{
+          hintEl.textContent = 'If this stays on “Attempting to connect”, your phone may have switched networks. Reconnect to the hotspot and open http://192.168.4.1';
+        }} else {{
+          hintEl.textContent = '';
+        }}
         if (state === 'connecting') {{
           btn.disabled = true;
         }} else {{
@@ -279,12 +294,12 @@ class WifiPortalHandler(BaseHTTPRequestHandler):
         try {{
           const res = await fetch('/status', {{cache: 'no-store'}});
           const data = await res.json();
-          setStatus(data.state, data.message);
+          setStatus(data.state, data.message, data);
         }} catch (e) {{}}
       }}
 
       const initialStatus = {status_json};
-      setStatus(initialStatus.state, initialStatus.message);
+      setStatus(initialStatus.state, initialStatus.message, initialStatus);
       setInterval(poll, 2000);
       poll();
 

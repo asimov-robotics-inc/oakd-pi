@@ -190,6 +190,8 @@ cleanup() {
 write_status() {
   local state="$1"
   local message="${2:-}"
+  local ip_addr="${3:-}"
+  local ssid="${4:-}"
   python3 - <<PY
 import json
 from pathlib import Path
@@ -197,6 +199,10 @@ from pathlib import Path
 payload = {"state": "$state"}
 if "$message":
     payload["message"] = "$message"
+if "$ip_addr":
+    payload["ip"] = "$ip_addr"
+if "$ssid":
+    payload["ssid"] = "$ssid"
 
 Path("$STATUS_PATH").write_text(json.dumps(payload), encoding="utf-8")
 PY
@@ -433,7 +439,7 @@ PY
     fi
 
     log "Received credentials for '$ssid'"
-    write_status "connecting" "Attempting to connect..."
+    write_status "connecting" "Attempting to connect..." "" "$ssid"
     err=""
     existing_wifi_uuids=()
 
@@ -464,7 +470,8 @@ PY
         fi
         if [[ "$ok" -eq 1 ]]; then
           CONNECTED=1
-          write_status "success" "Connected to $ssid"
+          ip_addr="$(hostname -I 2>/dev/null | awk '{print $1}')"
+          write_status "success" "Connected to $ssid" "$ip_addr" "$ssid"
           log "Connected to $ssid (portal will stay up until timeout)"
           break
         fi
@@ -477,7 +484,7 @@ PY
     if [[ -n "$err" ]]; then
       log "Connect error: $err"
     fi
-    write_status "failed" "Unable to join network. Check password and try again."
+    write_status "failed" "Unable to join network. Check password and try again." "" "$ssid"
     if have_nmcli; then
       while IFS= read -r line; do
         uuid="${line%%:*}"
