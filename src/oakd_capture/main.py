@@ -9,7 +9,7 @@ import time
 import shutil
 from enum import Enum, auto
 from pathlib import Path
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Optional
 
 import depthai as dai
@@ -32,16 +32,10 @@ DISK_CHECK_INTERVAL_S = 60.0
 DEVICE_RETRY_INTERVAL_S = 5.0
 
 # Video encoding settings (H.265 on camera)
-RGB_RESOLUTION = (1280, 720)  # 720p RGB (letterboxed to preserve full FOV)
+RGB_RESOLUTION = (1920, 1080)  # 1080p RGB (letterboxed to preserve full FOV)
 RGB_DEFAULT_SENSOR_RESOLUTION = dai.ColorCameraProperties.SensorResolution.THE_12_MP
 RGB_DEFAULT_ISP_SCALE = (1, 2)  # 12MP -> 2028x1520 (4:3) before letterbox
-MONO_RESOLUTION = (1280, 800)  # 800p mono
 H265_BITRATE = 6_000_000  # 6 Mbps - adjust if RGB quality or FPS drops
-MONO_MJPEG_QUALITY = 90
-
-# Synchronization settings
-SYNC_METHOD = "device_sync_node"
-SYNC_THRESHOLD_MS = 10
 FSYNC_INTERVAL_S = 5.0  # Flush MCAP to disk every N seconds
 
 
@@ -72,7 +66,7 @@ class McapRecorder:
         self._writer.start()
 
         # Register channels (raw bytes, no schema)
-        for topic_name in ("rgb", "left", "right", "imu"):
+        for topic_name in ("rgb", "imu"):
             self._channels[topic_name] = self._writer.register_channel(
                 topic=f"/oak/{topic_name}",
                 message_encoding="",
@@ -300,18 +294,13 @@ class CaptureApp:
             "rgb_sensor_name": self._rgb_sensor_name or "unknown",
             "rgb_isp_scale": f"{self._rgb_isp_scale[0]}/{self._rgb_isp_scale[1]}",
             "rgb_fov_mode": "letterbox",
-            "mono_resolution": f"{MONO_RESOLUTION[0]}x{MONO_RESOLUTION[1]}",
             "camera_fps": CAMERA_FPS,
             "imu_hz": IMU_HZ,
-            "sync_method": SYNC_METHOD,
-            "sync_threshold_ms": SYNC_THRESHOLD_MS,
             "timestamp_source": "device",
             "ir_intensity": IR_INTENSITY,
             "rgb_encoding": "h265",
             "h265_bitrate": H265_BITRATE,
-            "mono_encoding": "mjpeg",
-            "mono_quality": MONO_MJPEG_QUALITY,
-            "streams": ["rgb", "left", "right", "imu"],
+            "streams": ["rgb", "imu"],
         }
 
         self._recorder = McapRecorder(mcap_path, self._recording_config)
@@ -388,17 +377,6 @@ class CaptureApp:
                     cam_rgb.setInterleaved(False)
                     cam_rgb.setIspScale(*self._rgb_isp_scale)
 
-                    # Mono cameras for stereo (hardware synced via FSYNC)
-                    cam_left = pipeline.create(dai.node.MonoCamera)
-                    cam_left.setBoardSocket(dai.CameraBoardSocket.CAM_B)
-                    cam_left.setResolution(dai.MonoCameraProperties.SensorResolution.THE_800_P)
-                    cam_left.setFps(CAMERA_FPS)
-
-                    cam_right = pipeline.create(dai.node.MonoCamera)
-                    cam_right.setBoardSocket(dai.CameraBoardSocket.CAM_C)
-                    cam_right.setResolution(dai.MonoCameraProperties.SensorResolution.THE_800_P)
-                    cam_right.setFps(CAMERA_FPS)
-
                     # Resize RGB to 720p with letterbox to preserve full FOV
                     rgb_manip = pipeline.create(dai.node.ImageManip)
                     rgb_manip.initialConfig.setOutputSize(
@@ -416,25 +394,6 @@ class CaptureApp:
                     enc_rgb.setBitrate(H265_BITRATE)
                     rgb_manip.out.link(enc_rgb.input)
 
-                    # MJPEG encoders for mono streams (stereo-safe, intra-frame)
-                    enc_left = pipeline.create(dai.node.VideoEncoder)
-                    enc_left.setDefaultProfilePreset(CAMERA_FPS, dai.VideoEncoderProperties.Profile.MJPEG)
-                    enc_left.setQuality(MONO_MJPEG_QUALITY)
-                    cam_left.out.link(enc_left.input)
-
-                    enc_right = pipeline.create(dai.node.VideoEncoder)
-                    enc_right.setDefaultProfilePreset(CAMERA_FPS, dai.VideoEncoderProperties.Profile.MJPEG)
-                    enc_right.setQuality(MONO_MJPEG_QUALITY)
-                    cam_right.out.link(enc_right.input)
-
-                    # Sync node - synchronizes RGB + mono pairs by timestamp
-                    sync = pipeline.create(dai.node.Sync)
-                    sync.setSyncThreshold(timedelta(milliseconds=SYNC_THRESHOLD_MS))
-                    sync.setSyncAttempts(0)
-                    enc_rgb.bitstream.link(sync.inputs["rgb"])
-                    enc_left.bitstream.link(sync.inputs["left"])
-                    enc_right.bitstream.link(sync.inputs["right"])
-
                     # IMU (separate - runs at higher rate)
                     imu = pipeline.create(dai.node.IMU)
                     imu.enableIMUSensor(dai.IMUSensor.ACCELEROMETER_RAW, IMU_HZ)
@@ -442,14 +401,12 @@ class CaptureApp:
                     imu.setBatchReportThreshold(10)
                     imu.setMaxBatchReports(50)
 
-                    # Output queues - synchronized RGB + mono + IMU
-                    q_sync = sync.out.createOutputQueue(maxSize=2, blocking=True)
+                    # Output queues - RGB + IMU
+                    q_rgb = enc_rgb.bitstream.createOutputQueue(maxSize=4, blocking=True)
                     q_imu = imu.out.createOutputQueue(maxSize=100, blocking=False)
 
                     log.info(
-                        "Pipeline: RGB %sx%s letterbox @ %sfps (H.265 %sMbps, sensor %s, isp %s/%s, name %s), "
-                        "mono %sx%s @ %sfps (MJPEG Q%s), "
-                        "sync threshold %sms",
+                        "Pipeline: RGB %sx%s letterbox @ %sfps (H.265 %sMbps, sensor %s, isp %s/%s, name %s)",
                         RGB_RESOLUTION[0],
                         RGB_RESOLUTION[1],
                         CAMERA_FPS,
@@ -458,11 +415,6 @@ class CaptureApp:
                         self._rgb_isp_scale[0],
                         self._rgb_isp_scale[1],
                         self._rgb_sensor_name,
-                        MONO_RESOLUTION[0],
-                        MONO_RESOLUTION[1],
-                        CAMERA_FPS,
-                        MONO_MJPEG_QUALITY,
-                        SYNC_THRESHOLD_MS,
                     )
 
                     # Start pipeline
@@ -488,16 +440,16 @@ class CaptureApp:
                             for imu_data in imu_packets:
                                 self._recorder.write_imu(imu_data)
 
-                        try:
-                            sync_msg = q_sync.get()
-                            for name, frame in sync_msg:
+                        rgb_packets = q_rgb.tryGetAll()
+                        if rgb_packets:
+                            for frame in rgb_packets:
                                 ts = int(frame.getTimestampDevice().total_seconds() * 1e9)
                                 data = frame.getData()
-                                self._recorder.write_frame(name, data, ts)
-                        except Exception:
-                            if not imu_packets:
-                                time.sleep(0.005)
-                                continue
+                                self._recorder.write_frame("rgb", data, ts)
+
+                        if not imu_packets and not rgb_packets:
+                            time.sleep(0.005)
+                            continue
 
                         # Periodic fsync to survive hard power cuts
                         now = time.monotonic()
